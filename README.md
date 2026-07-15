@@ -5,8 +5,8 @@ against a self-hosted ComfyUI (through `comfy-api-proxy`), Comfy Cloud, or a
 serverless deployment, changing only the base URL and key.
 
 Design: a two-layer SDK — generated protocol bindings plus a hand-written
-idiomatic layer. This repository currently holds the first-iteration
-demo slice: submit a workflow, wait for it, download the outputs.
+idiomatic layer. This repository currently holds the first-iteration demo slice:
+submit a workflow, wait for it, download the outputs.
 
 ```python
 from comfy_sdk import Comfy

@@ -2,8 +2,8 @@
 
 One tiny, hand-written client that runs a workflow against ANY Comfy API v2
 surface — the local proxy or Comfy Cloud — changing only the base URL and key.
-This is the thin start of the two-layer SDK in docs/sdk/plan.md; the generated
-protocol layer and the full idiomatic surface come later.
+This is the thin start of the two-layer SDK; the generated protocol layer and the
+full idiomatic surface come later.
 """
 from __future__ import annotations
 
