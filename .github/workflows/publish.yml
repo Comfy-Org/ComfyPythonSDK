@@ -1,0 +1,68 @@
+# Scaffold only — publishing is intentionally turned OFF until the PyPI side
+# is set up. Do not remove the `if: false` guard below without doing the TODO
+# items first; this file exists so the pipeline shape is reviewed now and can
+# be switched on with a small, obvious diff later.
+#
+# TODO before enabling:
+#   1. Create the `comfy-sdk` project on PyPI (or reserve the name).
+#   2. On pypi.org, add a "Trusted Publisher" for this repo pointing at:
+#        repo:        Comfy-Org/ComfyPythonSDK
+#        workflow:    publish.yml
+#        environment: pypi
+#      (Trusted Publishing lets PyPI accept an upload via OIDC — no long-lived
+#      API token needs to be stored as a GitHub secret.)
+#   3. Create a GitHub Environment named "pypi" in this repo's settings and
+#      add required reviewers, so every publish needs a manual approval click
+#      even after this workflow is triggered.
+#   4. Once 1-3 are done, remove the `if: false` line in the `publish` job
+#      below (that's the only change needed to turn this on) — the manual
+#      workflow_dispatch trigger and the environment approval gate stay as
+#      the permanent safety net; nothing publishes on every tag automatically.
+name: Publish to PyPI
+
+on:
+  # Manual only, on purpose: the org's current decision is manual publish,
+  # not "every GitHub Release auto-publishes." A maintainer runs this from
+  # the Actions tab, picking the git tag/ref to build from.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git tag or ref to publish (e.g. v0.1.0)'
+        required: true
+        default: 'main'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Disabled until the PyPI Trusted Publisher + "pypi" environment above
+    # are configured. See the TODO block at the top of this file.
+    if: false
+    name: Build and publish
+    runs-on: ubuntu-latest
+    environment: pypi # requires manual approval once the environment exists with reviewers configured
+    permissions:
+      id-token: write # required for PyPI Trusted Publishing (OIDC), no API token secret needed
+      contents: read
+    steps:
+      - name: Check out ${{ github.event.inputs.ref }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: Install build tooling
+        run: pip install build
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
+        with:
+          packages-dir: dist/
