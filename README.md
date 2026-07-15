@@ -4,8 +4,8 @@ Python SDK for running ComfyUI workflows via the **Comfy API v2** — the same c
 against a self-hosted ComfyUI (through `comfy-api-proxy`), Comfy Cloud, or a
 serverless deployment, changing only the base URL and key.
 
-Design: `docs/sdk/plan.md` (two-layer SDK — generated protocol bindings + a
-hand-written idiomatic layer). This repository currently holds the first-iteration
+Design: a two-layer SDK — generated protocol bindings plus a hand-written
+idiomatic layer. This repository currently holds the first-iteration
 demo slice: submit a workflow, wait for it, download the outputs.
 
 ```python
@@ -20,4 +20,4 @@ for out in job["outputs"]:
 ```
 
 Status: early. The generated protocol layer, file upload, live progress, and the
-full idiomatic surface land per the plan.
+full idiomatic surface land in later iterations.
