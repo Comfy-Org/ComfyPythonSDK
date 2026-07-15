@@ -93,7 +93,9 @@ class Comfy:
             raise RuntimeError(f"get_job failed ({status}): {fresh}")
         return fresh
 
-    def run(self, workflow: dict[str, Any], timeout: float = 120.0, poll: float = 0.5) -> dict[str, Any]:
+    def run(
+        self, workflow: dict[str, Any], timeout: float = 120.0, poll: float = 0.5
+    ) -> dict[str, Any]:
         job = self.submit(workflow)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
