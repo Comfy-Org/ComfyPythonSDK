@@ -1,0 +1,1 @@
+Synced from the canonical Comfy API v2 contract — one-way, do not hand-edit. Regenerate `src/comfy_low/models/` from this with `scripts/gen_models.sh`; CI fails on drift. Operations tagged `internal` / `x-internal: true` are stripped before vendoring (this is a public repo).

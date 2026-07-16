@@ -1,24 +1,45 @@
 [project]
 name = "comfy-sdk"
-version = "0.0.1"
+version = "0.1.0"
 description = "Python SDK for running ComfyUI workflows via the Comfy API v2 (self-hosted, Comfy Cloud, serverless)."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "httpx>=0.27",
+    "blake3>=0.4",
+    "pydantic>=2.6",
+]
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest"]
+# Preview.to_pil() decodes in-progress preview frames to PIL images.
+pil = ["Pillow>=10"]
+# Regenerating comfy_low models from the vendored spec (codegen / CI drift check).
+# Pinned: the drift gate compares byte-for-byte, so the generator version is
+# load-bearing — an unpinned bump could reformat and flag false drift.
+codegen = ["datamodel-code-generator~=0.68.1", "PyYAML>=6"]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-asyncio>=0.23",
+    "datamodel-code-generator~=0.68.1",
+    "Pillow>=10",
+    "PyYAML>=6",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/comfy_sdk"]
+packages = ["src/comfy_sdk", "src/comfy_low"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# The generated model file is formatted by datamodel-code-generator (black/isort);
+# keep ruff away from it so its output stays byte-identical for the drift check.
+extend-exclude = ["src/comfy_low/models/_generated.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
@@ -30,6 +51,8 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
+exclude = ['src/comfy_low/models/_generated\.py']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
