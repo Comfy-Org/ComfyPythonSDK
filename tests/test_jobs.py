@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import pytest
 
+import comfy_sdk.client as _client_module
 from comfy_sdk import (
     Comfy,
     InvalidWorkflow,
     JobFailed,
     MissingAsset,
+    QueueFull,
     Unauthorized,
     WorkflowFormatUi,
 )
@@ -57,6 +59,21 @@ def test_queue_full_retries_with_retry_after(server) -> None:
         job = client.submit(_wf(client))
     assert job.id.startswith("job_")
     assert server.state.submit_count == 3  # two rejections + one success
+
+
+def test_queue_full_gives_up_once_retry_budget_elapses(server, monkeypatch) -> None:
+    # The server never clears backpressure. Before this test, only the
+    # "eventually succeeds" retry path was covered — nothing proved the client
+    # stops retrying and surfaces `QueueFull` instead of looping forever once
+    # the retry budget (`_QUEUE_RETRY_BUDGET`) has elapsed.
+    server.state.queue_full_times = 1_000_000
+    monkeypatch.setattr(_client_module, "_QUEUE_RETRY_BUDGET", -1.0)  # already elapsed
+    with Comfy(server.base_url) as client:
+        with pytest.raises(QueueFull):
+            client.submit(_wf(client))
+    # Exactly one attempt reached the server: the budget was spent before the
+    # first retry check, so there is no second POST.
+    assert server.state.submit_count == 1
 
 
 def test_missing_asset_maps_to_typed_exception(server) -> None:

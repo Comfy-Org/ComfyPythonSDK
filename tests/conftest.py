@@ -40,6 +40,9 @@ class ServerState:
     terminal_status: str = "succeeded"
     # SSE behavior: "reconnect" drops the first stream before terminal.
     sse_mode: str = "normal"
+    # If set, GET /assets/{id}/content responds 302 to this URL instead of
+    # serving bytes directly (simulates a signed-URL redirect to another host).
+    redirect_content_to: str | None = None
 
     # --- counters the tests assert on ---
     upload_count: int = 0
@@ -159,7 +162,10 @@ def _make_handler(state: ServerState):
 
             m = re.match(r"/api/v2/assets/([^/]+)/content$", self.path)
             if m:
-                self._serve_content()
+                if state.redirect_content_to:
+                    self._redirect(state.redirect_content_to)
+                else:
+                    self._serve_content()
                 return
             m = re.match(r"/api/v2/assets/([^/]+)$", self.path)
             if m:
@@ -174,6 +180,12 @@ def _make_handler(state: ServerState):
                 self._serve_job(m.group(1))
                 return
             self._err(404, "not_found")
+
+        def _redirect(self, location: str) -> None:
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def _serve_content(self) -> None:
             data = state.content_bytes

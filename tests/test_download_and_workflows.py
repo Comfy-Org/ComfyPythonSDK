@@ -19,6 +19,18 @@ def test_range_download_returns_partial(server) -> None:
     assert head == b"01234"  # bytes 0..4 inclusive
 
 
+def test_range_download_to_file_writes_only_the_requested_slice(server, tmp_path) -> None:
+    # `to_bytes(range=...)` is covered above; `to_file(range=...)` streams to
+    # disk through a separate code path (chunked writes, not a bytearray) and
+    # had no coverage at all.
+    server.state.content_bytes = b"0123456789abcdef"
+    with Comfy(server.base_url) as client:
+        job = client.run(_wf(client))
+        out = job.get_outputs("13")[0]
+        dest = out.to_file(tmp_path / "partial.bin", range=(4, 9))
+    assert dest.read_bytes() == b"456789"  # bytes 4..9 inclusive
+
+
 def test_full_download(server, tmp_path) -> None:
     with Comfy(server.base_url) as client:
         job = client.run(_wf(client))

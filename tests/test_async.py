@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from comfy_sdk import AsyncComfy, MissingAsset, StatusChange
+from comfy_sdk import AsyncComfy, MissingAsset, Progress, StatusChange
 
 
 def _wf(client: AsyncComfy):
@@ -27,6 +27,37 @@ async def test_async_events_stream_to_terminal(server) -> None:
         seen = [e async for e in job.events()]
     assert isinstance(seen[-1], StatusChange)
     assert seen[-1].status == "succeeded"
+
+
+async def test_async_sse_reconnect_with_no_replay(server) -> None:
+    # Mirrors `test_sse_reconnect_with_no_replay` in test_events.py, but for
+    # `AsyncJob.events()` — only the sync reconnect path had coverage before.
+    # The first stream drops after one progress frame with no terminal status;
+    # the async client must reconnect (fresh live frames, nothing replayed).
+    server.state.sse_mode = "reconnect"
+    server.state.polls_to_succeed = 1000
+    async with AsyncComfy(server.base_url) as client:
+        job = await client.submit(_wf(client))
+        seen = [e async for e in job.events()]
+
+    # Two physical connections were made to the events endpoint.
+    assert server.state.events_connect_count == 2
+    assert isinstance(seen[-1], StatusChange)
+    assert seen[-1].status == "succeeded"
+    # No replay: one progress frame per connection, not a replayed backlog.
+    progresses = [e for e in seen if isinstance(e, Progress)]
+    assert len(progresses) == 2
+
+
+async def test_async_range_download_returns_partial(server) -> None:
+    # The sync client has range-download coverage (test_download_and_workflows.py);
+    # the async `to_bytes(range=...)` path was never exercised.
+    server.state.content_bytes = b"0123456789abcdef"
+    async with AsyncComfy(server.base_url) as client:
+        job = await client.run(_wf(client))
+        out = job.get_outputs("13")[0]
+        head = await out.to_bytes(range=(0, 4))
+    assert head == b"01234"  # bytes 0..4 inclusive
 
 
 async def test_async_dedup_fast_path(server, tmp_path) -> None:
