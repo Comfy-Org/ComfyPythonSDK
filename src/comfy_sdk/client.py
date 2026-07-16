@@ -73,8 +73,15 @@ class Comfy:
         return _core.substitute_asset_handles(workflow.json, refs)
 
     def submit(self, workflow: Workflow, *, idempotency_key: str | None = None) -> Job:
-        """Submit a workflow. Auto-generates an idempotency key (so a timed-out
-        submit is safely retryable) and retries ``queue_full`` with ``Retry-After``.
+        """Submit a workflow. Retries ``queue_full`` with ``Retry-After``.
+
+        Sends an auto-generated ``Idempotency-Key`` so the server rejects an
+        accidental exact resend of *this* request (``422 idempotency_key_reuse``)
+        instead of creating a duplicate job. Each call mints a fresh key, so
+        calling ``submit()`` again is a distinct submission — to make a retry
+        idempotent, pass an explicit ``idempotency_key`` and reuse it. Note a
+        reused key is *rejected*, not replayed: on reuse, catch the error and
+        poll/list for the job the first attempt already created.
         """
         _guard_ui_format(workflow)
         graph = self._materialize(workflow)
