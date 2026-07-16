@@ -36,6 +36,7 @@ def _generate(out: Path) -> None:
             "--use-schema-description",
             "--field-constraints",
             "--collapse-root-models",
+            "--strict-nullable",
             "--use-annotated",
             "--disable-timestamp",
             "--custom-file-header",

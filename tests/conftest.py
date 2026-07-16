@@ -72,6 +72,8 @@ def _job_json(job_id: str, status: str, outputs: list[dict] | None = None) -> di
         "id": job_id,
         "status": status,
         "created_at": "2026-07-10T18:20:00Z",
+        "started_at": None,
+        "completed_at": None,
         "expires_at": "2026-07-11T18:20:00Z",
         "queue_position": 0,
         "progress": None,

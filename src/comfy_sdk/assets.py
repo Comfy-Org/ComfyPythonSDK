@@ -89,7 +89,7 @@ class _AssetBase:
         if asset.hash:
             self._hash = asset.hash
         self._created_new = asset.created_new
-        self._url = asset.url
+        self._url = str(asset.url)
 
     def __repr__(self) -> str:
         state = self._id or "uncommitted"

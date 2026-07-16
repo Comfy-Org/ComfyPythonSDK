@@ -3,12 +3,48 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
-from pydantic import AwareDatetime, BaseModel, Field, RootModel
+from pydantic import AnyUrl, AwareDatetime, BaseModel, Field
+
+
+class Asset(BaseModel):
+    """
+    A user-owned record identified by a server-assigned UUID, backing an immutable blob whose content carries a server-computed blake3 hash. `hash` may be computed lazily: an asset record (and its retrievable bytes) can exist before its hash is filled in.
+    """
+
+    id: Annotated[str, Field(examples=['asset_01JZV8Q3M7K2W9X0Y1Z2A3B4C5'])]
+    hash: Annotated[
+        str | None,
+        Field(
+            description='`blake3:<hex>`; null while lazily computed.',
+            examples=['blake3:9f8a1c0d...'],
+        ),
+    ]
+    size_bytes: Annotated[int, Field(examples=[4816293])]
+    content_type: Annotated[str, Field(examples=['image/png'])]
+    file_path: Annotated[str | None, Field(examples=['photo.png'])] = None
+    created_new: Annotated[
+        bool | None,
+        Field(
+            description='On create responses: distinguishes a brand-new blob (true) from a dedup hit against bytes the platform already had (false).'
+        ),
+    ] = None
+    created_at: AwareDatetime
+    url: Annotated[
+        AnyUrl, Field(description='Short-lived content URL (signed, or proxy-served).')
+    ]
+    url_expires_at: AwareDatetime
 
 
 class JobStatus(Enum):
+    """
+    Lifecycle: queued → running → succeeded | failed | expired;
+    a cancel request moves running → canceling → canceled.
+    Terminal states: succeeded, canceled, failed, expired.
+
+    """
+
     queued = 'queued'
     running = 'running'
     succeeded = 'succeeded'
@@ -18,7 +54,44 @@ class JobStatus(Enum):
     expired = 'expired'
 
 
+class JobUrls(BaseModel):
+    """
+    Embedded follow-up links — follow these, don't build URLs.
+    """
+
+    self: str
+    events: str
+    cancel: str
+
+
+class Progress(BaseModel):
+    """
+    Server-computed progress snapshot (node-count and sampler-step weighted). Complete per snapshot — one fully re-syncs a client.
+    """
+
+    value: Annotated[
+        float,
+        Field(
+            description='Overall fraction, server-computed.',
+            examples=[0.42],
+            ge=0.0,
+            le=1.0,
+        ),
+    ]
+    nodes_done: Annotated[int, Field(examples=[11])]
+    nodes_total: Annotated[int, Field(examples=[31])]
+    current_node: Annotated[str | None, Field(examples=['12'])] = None
+    current_node_class: Annotated[str | None, Field(examples=['KSampler'])] = None
+    step: Annotated[int | None, Field(examples=[21])] = None
+    steps: Annotated[int | None, Field(examples=[50])] = None
+    message: Annotated[str | None, Field(examples=['KSampler 21/50'])] = None
+
+
 class OutputType(Enum):
+    """
+    Normalized output kind — nothing silently dropped.
+    """
+
     image = 'image'
     video = 'video'
     audio = 'audio'
@@ -27,154 +100,155 @@ class OutputType(Enum):
     latent = 'latent'
 
 
-class Asset(BaseModel):
-    id: Annotated[
-        str,
-        Field(description='Durable asset UUID (the value referenced from workflows).'),
-    ]
-    hash: Annotated[
-        str | None,
-        Field(description='Server-computed blake3, lazily populated; may be null.'),
-    ] = None
-    size_bytes: int
-    content_type: str
-    file_path: str | None = None
-    created_new: Annotated[
-        bool, Field(description='True for a brand-new blob, false for a dedup hit.')
-    ]
-    created_at: AwareDatetime
-    url: str
-    url_expires_at: AwareDatetime
-
-
-class Progress(BaseModel):
-    value: Annotated[
-        float, Field(description='Server-computed overall fraction (0..1).')
-    ]
-    nodes_done: int
-    nodes_total: int
-    current_node: str | None = None
-    current_node_class: str | None = None
-    step: int | None = None
-    steps: int | None = None
-    message: str | None = None
-
-
-class Output(BaseModel):
-    node_id: str
-    name: str
-    type: OutputType
-    content_type: str
-    size_bytes: int
-    id: str
-    hash: str | None = None
-    url: str
-    url_expires_at: AwareDatetime
-
-
 class JobError(BaseModel):
-    code: str
+    """
+    Execution failure detail, carried in `job.error` (not an HTTP error).
+    """
+
+    code: Annotated[str, Field(examples=['node_execution_error'])]
     message: str
     node_id: str | None = None
     class_type: str | None = None
     traceback: str | None = None
 
 
-class JobUrls(BaseModel):
-    self: str
-    events: str
-    cancel: str
+class Error(BaseModel):
+    code: Annotated[str, Field(examples=['invalid_workflow'])]
+    message: Annotated[
+        str,
+        Field(examples=["Node 12 (KSampler): required input 'model' is not connected"]),
+    ]
+    details: Annotated[
+        dict[str, Any] | None,
+        Field(
+            examples=[
+                {'node_errors': {'12': [{'field': 'model', 'reason': 'missing_input'}]}}
+            ]
+        ),
+    ] = None
 
 
-class Job(BaseModel):
-    id: str
+class ErrorEnvelope(BaseModel):
+    """
+    Shared error envelope with machine-readable codes. Core codes (v1):
+    `invalid_workflow` (422), `workflow_format_ui` (422),
+    `missing_asset` (422), `hash_mismatch` (409), `blob_not_found`
+    (404), `idempotency_key_reuse` (422), `idempotency_conflict` (409),
+    `queue_full` (429 + Retry-After), `insufficient_credits` (402),
+    `not_found` (404), `unauthorized` (401), `forbidden` (403).
+
+    """
+
+    error: Error
+
+
+class StatusEvent(BaseModel):
+    """
+    SSE `status` event payload.
+    """
+
     status: JobStatus
-    created_at: AwareDatetime
-    started_at: AwareDatetime | None = None
-    completed_at: AwareDatetime | None = None
-    expires_at: AwareDatetime
     queue_position: int | None = None
-    progress: Progress | None = None
-    outputs: list[Output]
-    error: JobError | None = None
-    metrics: dict[str, int | None] | None = None
-    urls: JobUrls
 
 
-class AssetReferenceInfo(BaseModel):
-    id: Annotated[str, Field(description='Authoritative asset UUID.')]
-    hash: Annotated[
-        str | None, Field(description='blake3 dedup / cross-surface lookup hint.')
-    ] = None
-    file_path: Annotated[
-        str | None,
-        Field(description='Preserves the extension for nodes that sniff it.'),
-    ] = None
+class PreviewEvent(BaseModel):
+    """
+    SSE `preview` event payload (JPEG, base64, throttled).
+    """
+
+    node_id: str
+    content_type: Annotated[str, Field(examples=['image/jpeg'])]
+    data_base64: str
+
+
+class LogEvent(BaseModel):
+    """
+    SSE `log` event payload. Best-effort diagnostics.
+    """
+
+    level: Annotated[str, Field(examples=['info'])]
+    message: str
+
+
+class FieldType(Enum):
+    core_ASSET = 'core/ASSET'
+
+
+class Info(BaseModel):
+    id: Annotated[str, Field(examples=['asset_01JZV8Q3M7K2W9X0Y1Z2A3B4C5'])]
+    hash: Annotated[str | None, Field(examples=['blake3:9f8a1c0d...'])] = None
+    file_path: Annotated[str | None, Field(examples=['photo.png'])] = None
 
 
 class AssetReference(BaseModel):
     """
-    The `core/ASSET` object placed into workflow JSON where a filename would go.
+    The typed asset-reference object placed inside workflow JSON where a
+    filename would normally go (documented here for tooling; it is not a
+    request/response body itself):
+
+        {"__type": "core/ASSET",
+         "info": {"id": "asset_...", "hash": "blake3:...",
+                  "file_path": "photo.png"}}
+
+    `info.id` (the asset UUID) is required in v1 and authoritative;
+    `hash` and `file_path` are optional staging/lookup hints and never
+    override a present `id`. A malformed reference or one that is not
+    resolvable/ready/owned by the caller fails submission with 422
+    `missing_asset`.
+
     """
 
-    field__type: Annotated[Literal['core/ASSET'], Field(alias='__type')]
-    info: AssetReferenceInfo
+    field__type: Annotated[FieldType, Field(alias='__type')]
+    info: Info
 
 
-class AssetUploadForm(BaseModel):
-    file: bytes
-    content_type: str
-    file_path: str
-    expected_hash: Annotated[
-        str | None,
-        Field(
-            description='Optional; verified against the server-computed blake3, never trusted.'
-        ),
-    ] = None
-    tags: list[str] | None = None
+class Output(BaseModel):
+    """
+    A committed job output. Outputs are assets: `id` is the asset UUID, retrievable via GET /api/v2/assets/{id} for as long as the job is retained. `hash` is lazily computed and may be null on the retrieval hot path.
+    """
 
-
-class AssetFromHashRequest(BaseModel):
-    hash: str
-    file_path: str | None = None
-    tags: list[str] | None = None
-
-
-class JobSubmitRequest(BaseModel):
-    workflow: Annotated[
-        dict[str, Any], Field(description='API-format workflow graph, verbatim.')
+    node_id: Annotated[str, Field(examples=['9'])]
+    name: Annotated[str, Field(examples=['ComfyUI_00001_.png'])]
+    type: OutputType
+    content_type: Annotated[str, Field(examples=['image/png'])]
+    size_bytes: Annotated[int, Field(examples=[1848320])]
+    id: Annotated[
+        str, Field(description='Asset UUID.', examples=['asset_01JZV9R4N8...'])
     ]
+    hash: Annotated[
+        str | None, Field(description='`blake3:<hex>`; null until lazily computed.')
+    ]
+    url: AnyUrl
+    url_expires_at: AwareDatetime
 
 
-class Error(BaseModel):
-    code: str
-    message: str
-    details: dict[str, Any] | None = None
+class Job(BaseModel):
+    """
+    One execution of a workflow. Durable from creation until `expires_at`; `outputs` populates incrementally during execution.
+    """
 
-
-class ErrorEnvelope(BaseModel):
-    error: Error
-
-
-class StatusEventData(BaseModel):
+    id: Annotated[str, Field(examples=['job_01JZTGXW9Q2M4R8V0B1N3P5D7F'])]
     status: JobStatus
-    queue_position: int | None = None
-
-
-class ProgressEventData(RootModel[Progress]):
-    root: Progress
-
-
-class PreviewEventData(BaseModel):
-    node_id: str
-    content_type: str
-    data_base64: str
-
-
-class OutputEventData(RootModel[Output]):
-    root: Output
-
-
-class LogEventData(BaseModel):
-    level: str
-    message: str
+    created_at: AwareDatetime
+    started_at: Annotated[AwareDatetime | None, Field(...)]
+    completed_at: Annotated[AwareDatetime | None, Field(...)]
+    expires_at: Annotated[
+        AwareDatetime,
+        Field(
+            description='Retention deadline — a platform property, not an API constant.'
+        ),
+    ]
+    queue_position: Annotated[int | None, Field(...)]
+    progress: Annotated[
+        Progress | None,
+        Field(
+            description='The latest progress snapshot; same data the SSE stream pushes.'
+        ),
+    ]
+    outputs: list[Output]
+    error: Annotated[JobError | None, Field(...)]
+    metrics: Annotated[
+        dict[str, int | None] | None,
+        Field(examples=[{'queue_ms': 9000, 'execution_ms': None}]),
+    ] = None
+    urls: JobUrls
