@@ -16,10 +16,12 @@ live in ``comfy_sdk``.
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, BinaryIO
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -30,6 +32,8 @@ from .sse import RawEvent, SSEDecoder
 
 _API = "/api/v2"
 _UNSET = object()
+
+_DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
 def _retry_after(resp: httpx.Response) -> int | None:
@@ -42,12 +46,23 @@ def _retry_after(resp: httpx.Response) -> int | None:
         return None
 
 
+def _origin(url: str) -> tuple[str, str, int | None]:
+    """Normalized ``(scheme, host, port)`` — the parts that define same-origin."""
+    parts = urlsplit(url)
+    scheme = (parts.scheme or "").lower()
+    port = parts.port
+    if port is None:
+        port = _DEFAULT_PORTS.get(scheme)
+    return (scheme, (parts.hostname or "").lower(), port)
+
+
 class _Prepared:
     """Sans-IO request building shared by both transports."""
 
     def __init__(self, base_url: str, api_key: str | None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        self._base_origin = _origin(self.base_url)
 
     def url(self, path: str) -> str:
         # A path may be an absolute follow-up link (job.urls.*) or an API path.
@@ -57,11 +72,15 @@ class _Prepared:
             return self.base_url + path
         return self.base_url + _API + path
 
-    def headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
+    def headers(self, url: str, extra: dict[str, str] | None = None) -> dict[str, str]:
         h: dict[str, str] = {}
         # Only authenticate when a key is set: a local proxy fronts a ComfyUI
-        # with no auth, so we never leak credentials it does not want.
-        if self.api_key:
+        # with no auth, so we never leak credentials it does not want. And only
+        # attach it when the resolved request URL is same-origin as base_url:
+        # server-returned absolute follow-up links (job.urls.self/cancel/events)
+        # must not carry the key to a different scheme/host/port. Relative paths
+        # are always resolved under base_url, so they are unaffected.
+        if self.api_key and _origin(url) == self._base_origin:
             h["Authorization"] = f"Bearer {self.api_key}"
         if extra:
             h.update(extra)
@@ -82,6 +101,23 @@ class _Prepared:
 
 def _new_boundary() -> str:
     return "----comfy" + secrets.token_hex(16)
+
+
+async def _async_multipart_body(chunks: Iterator[bytes]) -> AsyncIterator[bytes]:
+    """Bridge the sync multipart chunk generator into an async byte stream.
+
+    ``_multipart.build_multipart`` reads the file with blocking ``read()`` calls
+    (it has to — file objects are sync). ``httpx.AsyncClient`` requires an async
+    iterable body, so each ``next()`` (which may block on a file read) is run in
+    a worker thread via ``asyncio.to_thread`` — that keeps the event loop free
+    while still streaming chunk-by-chunk instead of buffering the whole file.
+    """
+    it = iter(chunks)
+    while True:
+        chunk = await asyncio.to_thread(next, it, None)
+        if chunk is None:
+            return
+        yield chunk
 
 
 class ComfyLow:
@@ -125,10 +161,11 @@ class ComfyLow:
         kw: dict[str, Any] = {}
         if timeout is not _UNSET:
             kw["timeout"] = timeout
+        url = self._p.url(path)
         return self._client.request(
             method,
-            self._p.url(path),
-            headers=self._p.headers(headers),
+            url,
+            headers=self._p.headers(url, headers),
             json=json,
             content=content,
             **kw,
@@ -149,10 +186,11 @@ class ComfyLow:
         kw: dict[str, Any] = {}
         if timeout is not _UNSET:
             kw["timeout"] = timeout
+        url = self._p.url(path)
         with self._client.stream(
             method,
-            self._p.url(path),
-            headers=self._p.headers(headers),
+            url,
+            headers=self._p.headers(url, headers),
             json=json,
             content=content,
             **kw,
@@ -175,13 +213,16 @@ class ComfyLow:
         """POST /api/v2/assets — streaming multipart upload."""
         if file_size is None:
             file_size = _multipart.file_size_of(file)
-        fields: dict[str, str] = {"content_type": content_type, "file_path": file_path}
+        fields: list[tuple[str, str]] = [
+            ("content_type", content_type),
+            ("file_path", file_path),
+        ]
         if expected_hash is not None:
-            fields["expected_hash"] = expected_hash
+            fields.append(("expected_hash", expected_hash))
         if tags:
-            for t in tags:
-                # Repeat the field name for a list, form convention.
-                fields.setdefault("tags", t)
+            # One part per tag — repeating the field name is the multipart/form
+            # convention for a list, and a dict would silently drop all but one.
+            fields.extend(("tags", t) for t in tags)
         boundary = _new_boundary()
         body, length = _multipart.build_multipart(
             boundary,
@@ -346,10 +387,11 @@ class AsyncComfyLow:
         kw: dict[str, Any] = {}
         if timeout is not _UNSET:
             kw["timeout"] = timeout
+        url = self._p.url(path)
         return await self._client.request(
             method,
-            self._p.url(path),
-            headers=self._p.headers(headers),
+            url,
+            headers=self._p.headers(url, headers),
             json=json,
             content=content,
             **kw,
@@ -369,10 +411,11 @@ class AsyncComfyLow:
         kw: dict[str, Any] = {}
         if timeout is not _UNSET:
             kw["timeout"] = timeout
+        url = self._p.url(path)
         async with self._client.stream(
             method,
-            self._p.url(path),
-            headers=self._p.headers(headers),
+            url,
+            headers=self._p.headers(url, headers),
             json=json,
             content=content,
             **kw,
@@ -393,12 +436,15 @@ class AsyncComfyLow:
     ) -> Asset:
         if file_size is None:
             file_size = _multipart.file_size_of(file)
-        fields: dict[str, str] = {"content_type": content_type, "file_path": file_path}
+        fields: list[tuple[str, str]] = [
+            ("content_type", content_type),
+            ("file_path", file_path),
+        ]
         if expected_hash is not None:
-            fields["expected_hash"] = expected_hash
+            fields.append(("expected_hash", expected_hash))
         if tags:
-            for t in tags:
-                fields.setdefault("tags", t)
+            # One part per tag — see the sync ``post_assets`` for why a dict is wrong.
+            fields.extend(("tags", t) for t in tags)
         boundary = _new_boundary()
         body, length = _multipart.build_multipart(
             boundary,
@@ -413,9 +459,16 @@ class AsyncComfyLow:
             headers["Content-Length"] = str(length)
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
-        # httpx accepts a sync generator as an async request body.
+        # AsyncClient requires an async-iterable body: build_multipart only ever
+        # produces a sync generator (file reads are inherently sync), so bridge
+        # it — see _async_multipart_body — instead of handing httpx a sync
+        # generator, which raises RuntimeError the moment it tries to send.
         resp = await self.raw_request(
-            "POST", "/assets", headers=headers, content=body, timeout=timeout
+            "POST",
+            "/assets",
+            headers=headers,
+            content=_async_multipart_body(body),
+            timeout=timeout,
         )
         data = self._p.parse_or_raise(resp, (200, 201, 202))
         return Asset.model_validate(data)

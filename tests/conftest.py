@@ -51,6 +51,12 @@ class ServerState:
     last_workflow: dict[str, Any] | None = None
     # Idempotency-Key -> job id (for replay).
     idempotency: dict[str, str] = field(default_factory=dict)
+    # Raw bytes of the last POST /assets multipart body (so tests can inspect
+    # the parts actually sent — e.g. how many `tags` fields were included).
+    last_upload_body: bytes = b""
+    # Authorization header seen on the most recent request (any method).
+    # `None` before any request; `""` if a request arrived without one.
+    last_auth_header: str | None = None
 
 
 def _asset_json(asset_id: str, hash_: str, created_new: bool, size: int) -> dict:
@@ -121,9 +127,13 @@ def _make_handler(state: ServerState):
             self._json(status, {"error": {"code": code, "message": message}})
 
         def _auth_ok(self) -> bool:
+            # Record what actually arrived (regardless of whether auth is
+            # required) so a test can assert the bearer token was — or was
+            # not — attached to a given request.
+            state.last_auth_header = self.headers.get("Authorization", "")
             if not state.require_auth:
                 return True
-            return bool(self.headers.get("Authorization"))
+            return bool(state.last_auth_header)
 
         def _read_body(self) -> bytes:
             n = int(self.headers.get("Content-Length", 0))
@@ -242,6 +252,7 @@ def _make_handler(state: ServerState):
         def _post_assets(self) -> None:
             state.upload_count += 1
             body = self._read_body()
+            state.last_upload_body = body
             if state.reject_hash_mismatch:
                 self._err(409, "hash_mismatch", "bytes do not match expected_hash")
                 return
@@ -300,14 +311,40 @@ class _Server:
         self.base_url = f"http://{host}:{port}"
 
 
-@pytest.fixture
-def server():
+def _start_server() -> _Server:
     state = ServerState()
     httpd = HTTPServer(("127.0.0.1", 0), _make_handler(state))
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
+    srv = _Server(httpd, state)
+    srv._thread = thread  # type: ignore[attr-defined]
+    return srv
+
+
+def _stop_server(srv: _Server) -> None:
+    srv._httpd.shutdown()
+    srv._thread.join(timeout=5)  # type: ignore[attr-defined]
+
+
+@pytest.fixture
+def server():
+    srv = _start_server()
     try:
-        yield _Server(httpd, state)
+        yield srv
     finally:
-        httpd.shutdown()
-        thread.join(timeout=5)
+        _stop_server(srv)
+
+
+@pytest.fixture
+def second_server():
+    """A second, independent stub server on a different port.
+
+    Gives a test a distinct *origin* from ``server`` — used to prove the
+    bearer token is not attached to absolute follow-up links (job.urls.*)
+    pointing somewhere other than the configured base_url.
+    """
+    srv = _start_server()
+    try:
+        yield srv
+    finally:
+        _stop_server(srv)

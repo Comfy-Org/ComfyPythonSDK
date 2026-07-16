@@ -40,6 +40,23 @@ async def test_async_dedup_fast_path(server, tmp_path) -> None:
     assert server.state.upload_count == 0
 
 
+async def test_async_real_upload_of_fresh_file_succeeds(server, tmp_path) -> None:
+    # Deliberately do NOT seed `known_hashes` — the dedup HEAD probe misses, so
+    # `commit()` must drive a real multipart upload over the AsyncClient. Before
+    # the fix, `AsyncComfyLow.post_assets` handed httpx a *sync* generator body,
+    # which raises RuntimeError ("Attempted to send a sync request with an
+    # AsyncClient instance") the moment httpx tries to send it.
+    p = tmp_path / "fresh.bin"
+    p.write_bytes(b"a fresh, never-before-seen payload that forces a real upload")
+    async with AsyncComfy(server.base_url) as client:
+        asset = client.assets.from_file(p)
+        asset_id = await asset.commit()
+    assert asset_id == "asset_uploaded_01"
+    assert asset.created_new is True
+    assert server.state.upload_count == 1
+    assert server.state.from_hash_count == 0
+
+
 async def test_async_error_mapping(server) -> None:
     server.state.job_error = (422, "missing_asset")
     async with AsyncComfy(server.base_url) as client:

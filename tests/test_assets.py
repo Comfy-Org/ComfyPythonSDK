@@ -66,6 +66,30 @@ def test_streaming_upload_does_not_buffer_whole_file(server, monkeypatch) -> Non
     assert recorder.max_read < len(payload)
 
 
+def test_post_assets_sends_one_multipart_part_per_tag(server, tmp_path) -> None:
+    # Before the fix, `post_assets` built the multipart fields as a plain
+    # `dict[str, str]` and used `setdefault("tags", t)` in a loop — so only the
+    # FIRST tag ever made it into the request; the rest were silently dropped.
+    payload = b"tagged-upload-bytes"
+    p = tmp_path / "tagged.bin"
+    p.write_bytes(payload)
+
+    with Comfy(server.base_url) as client:
+        with open(p, "rb") as fh:
+            client._low.post_assets(
+                fh,
+                "application/octet-stream",
+                "tagged.bin",
+                tags=["a", "b", "c"],
+            )
+
+    body = server.state.last_upload_body
+    assert body.count(b'name="tags"') == 3
+    assert b'name="tags"\r\n\r\na\r\n' in body
+    assert b'name="tags"\r\n\r\nb\r\n' in body
+    assert b'name="tags"\r\n\r\nc\r\n' in body
+
+
 def test_hash_mismatch_surfaced_without_blind_retry(server, tmp_path) -> None:
     server.state.reject_hash_mismatch = True
     p = tmp_path / "photo.png"

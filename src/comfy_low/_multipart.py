@@ -37,7 +37,7 @@ def _closing(boundary: str) -> bytes:
 def build_multipart(
     boundary: str,
     *,
-    fields: dict[str, str],
+    fields: list[tuple[str, str]],
     file_name: str,
     file_obj: BinaryIO,
     file_content_type: str,
@@ -46,12 +46,17 @@ def build_multipart(
 ) -> tuple[Iterator[bytes], int | None]:
     """Return ``(body_iterator, content_length)``.
 
+    ``fields`` is a list of ``(name, value)`` pairs rather than a ``dict`` so a
+    repeatable field (e.g. ``tags``) can appear more than once — the standard
+    multipart/form-data convention for sending a list — without one value
+    clobbering another under the same key.
+
     ``content_length`` is ``None`` when ``file_size`` is unknown (the caller then
     lets the client fall back to chunked transfer encoding). The file object is
     read in ``chunk_size`` slices — never with a size-less ``read()`` — so a
     multi-GB file never lands in memory whole.
     """
-    text_fields = b"".join(_field_part(boundary, name, value) for name, value in fields.items())
+    text_fields = b"".join(_field_part(boundary, name, value) for name, value in fields)
     file_hdr = _file_header(boundary, "file", file_name, file_content_type)
     closing = _closing(boundary)
 
