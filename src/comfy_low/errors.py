@@ -59,10 +59,6 @@ class IdempotencyKeyReuse(ApiError):
     code = "idempotency_key_reuse"
 
 
-class IdempotencyConflict(ApiError):
-    code = "idempotency_conflict"
-
-
 class QueueFull(ApiError):
     code = "queue_full"
 
@@ -93,7 +89,6 @@ _BY_CODE: dict[str, type[ApiError]] = {
         HashMismatch,
         BlobNotFound,
         IdempotencyKeyReuse,
-        IdempotencyConflict,
         QueueFull,
         InsufficientCredits,
         NotFound,

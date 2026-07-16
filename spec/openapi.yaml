@@ -66,7 +66,7 @@ paths:
         polls `GET /api/v2/assets/{id}` until ready.
 
         ~100 MB single-request expectation for v1; chunked/resumable large
-        uploads are a deliberate open question for v1.
+        uploads are a deliberate open question.
       x-streaming-upload: true
       x-idempotency-key: recommended
       parameters:
@@ -128,7 +128,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409':
-          description: '`hash_mismatch` or `idempotency_conflict`.'
+          description: '`hash_mismatch`.'
           headers:
             Retry-After: { $ref: '#/components/headers/RetryAfter' }
           content:
@@ -141,6 +141,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
   /api/v2/assets/from-hash:
     post:
@@ -195,6 +196,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
   /api/v2/assets/by-hash/{hash}:
     head:
@@ -213,6 +215,7 @@ paths:
         '404':
           description: No blob the caller may mint from.
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
   /api/v2/assets/{id}:
     get:
@@ -234,6 +237,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
   /api/v2/assets/{id}/content:
     get:
@@ -280,6 +284,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '416':
           description: Range not satisfiable.
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
   /api/v2/jobs:
     post:
@@ -296,12 +301,21 @@ paths:
         UI-format workflow JSON (the export with `nodes`/`links`) is
         rejected with `workflow_format_ui`.
 
-        `Idempotency-Key` follows Stripe semantics: a retry with the same
-        key and body replays the recorded response (`Idempotency-Replayed:
-        true`, same job, no second execution); same key with a different
-        body is `422` `idempotency_key_reuse`; a concurrent retry while the
-        first is in flight is `409` with `Retry-After`. Keys expire after
-        24h.
+        `Idempotency-Key` is single-use (reject-on-duplicate, NOT
+        record-and-replay): the first request to present a given key is
+        processed normally; ANY later request presenting the same key — a
+        retry, a concurrent duplicate, or a same-key request with a different
+        body — is rejected `422` `idempotency_key_reuse` and is never
+        re-executed. The key is claimed only for a request that actually
+        reaches submission and is released if that submission definitively
+        fails without creating a job (a validation error, or an upstream
+        reject such as out-of-credits or queue-full), so a legitimate retry
+        with the same key can proceed. If a submission's outcome is unknown
+        (an upstream timeout or 5xx where the job may or may not have been
+        created), the key stays claimed and the retry is rejected: poll or
+        list your jobs to find the possibly-created job rather than
+        resubmitting. Keys expire after 24h. There is no response replay and
+        no `Idempotency-Replayed` header.
 
         Reserved for post-MVP and rejected if present today: `webhook_url`,
         `inputs`.
@@ -323,9 +337,6 @@ paths:
       responses:
         '201':
           description: Job created and queued.
-          headers:
-            Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/json:
               schema:
@@ -338,14 +349,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409':
-          description: '`idempotency_conflict` — concurrent retry in flight.'
-          headers:
-            Retry-After: { $ref: '#/components/headers/RetryAfter' }
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
         '422':
           description: >-
             `invalid_workflow` (with per-node details),
@@ -363,6 +366,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
   /api/v2/jobs/{id}:
     get:
@@ -387,6 +391,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
   /api/v2/jobs/{id}/events:
     get:
@@ -422,13 +427,26 @@ paths:
           schema: '#/components/schemas/PreviewEvent'
         output:
           description: >-
-            Emitted the moment each output asset is committed. Latency
-            optimization only — the same output is on job.outputs[].
+            Emitted the moment each output asset is committed, carrying the
+            same `Output` object that appears on `job.outputs[]`. A latency
+            optimization only: it lets a client render each result as it lands
+            instead of waiting for the terminal `status` event. It is delivered
+            best-effort over the live broadcast path — an output whose durable
+            asset record is not yet resolvable when its node finishes may be
+            delivered on a slightly later event or, failing that, only in the
+            terminal `status` snapshot — so the authoritative, complete set of
+            outputs is always `job.outputs[]` on `GET /api/v2/jobs/{id}` and on
+            the terminal `status` event. A client must therefore treat these as
+            additive hints and must not assume it receives one per output.
           schema: '#/components/schemas/Output'
         log:
           description: >-
             Selected execution log lines. Best-effort diagnostics; the one
-            event type with no snapshot equivalent.
+            event type with no snapshot equivalent. NOT YET EMITTED by the
+            server in the first iteration — reserved in the catalog so the wire
+            contract is stable. Clients must not depend on receiving this event
+            yet.
+          x-sse-not-yet-emitted: true
           schema: '#/components/schemas/LogEvent'
       parameters:
         - $ref: '#/components/parameters/JobId'
@@ -445,6 +463,29 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429':
+          description: >-
+            `too_many_streams` — the caller already has the maximum number
+            of concurrent GET .../events streams open. Close an existing
+            stream (or wait for one to reach a terminal status) before
+            opening another; GET /api/v2/jobs/{id} remains available as a
+            plain poll regardless of this limit.
+          headers:
+            Retry-After: { $ref: '#/components/headers/RetryAfter' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '501':
+          description: >-
+            `not_implemented` — this deployment does not yet serve live
+            event streaming. GET /api/v2/jobs/{id} remains available as a
+            plain poll in the meantime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
   /api/v2/jobs/{id}/cancel:
     post:
@@ -470,6 +511,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/UpstreamError' }
 
 components:
   securitySchemes:
@@ -489,8 +531,10 @@ components:
       schema:
         type: string
       description: >-
-        Client-generated UUID (recommended). Stripe semantics; keys expire
-        after 24h.
+        Client-generated UUID (recommended). Single-use: the first request to
+        present a key is processed; any later request with the same key is
+        rejected `422` `idempotency_key_reuse` (reject-on-duplicate, no
+        response replay). Keys expire after 24h.
     JobId:
       name: id
       in: path
@@ -519,12 +563,6 @@ components:
       schema:
         type: integer
       description: Seconds to wait before retrying.
-    IdempotencyReplayed:
-      schema:
-        type: boolean
-      description: >-
-        `true` when this response was replayed from a previously recorded
-        request with the same Idempotency-Key.
 
   responses:
     Unauthorized:
@@ -541,6 +579,18 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     NotFound:
       description: '`not_found`.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    UpstreamError:
+      description: >-
+        `upstream_error` — an unexpected failure reaching or processing the
+        request in this implementation's backing services. The message is
+        always a generic, safe-to-display string; implementation detail
+        (the specific upstream, its error text, transport failures) is
+        never included here — see each implementation's own error-mapping
+        notes. Every operation in this contract can fail this way.
       content:
         application/json:
           schema:
@@ -639,10 +689,18 @@ components:
           nullable: true
         metrics:
           type: object
+          description: >-
+            Values are nullable (a metric not yet available — e.g.
+            `execution_ms` before a job starts running — is `null`, not
+            omitted); the example below is deliberately all-non-null
+            purely to work around a Spectral/nimma lint-tooling crash on a
+            literal `null` inside a schema `example` combined with
+            `additionalProperties.nullable: true` — the schema itself is
+            unchanged and still allows null values at runtime.
           additionalProperties:
             type: integer
             nullable: true
-          example: { queue_ms: 9000, execution_ms: null }
+          example: { queue_ms: 9000, execution_ms: 42000 }
         urls:
           $ref: '#/components/schemas/JobUrls'
 
@@ -784,7 +842,7 @@ components:
         Shared error envelope with machine-readable codes. Core codes (v1):
         `invalid_workflow` (422), `workflow_format_ui` (422),
         `missing_asset` (422), `hash_mismatch` (409), `blob_not_found`
-        (404), `idempotency_key_reuse` (422), `idempotency_conflict` (409),
+        (404), `idempotency_key_reuse` (422),
         `queue_full` (429 + Retry-After), `insufficient_credits` (402),
         `not_found` (404), `unauthorized` (401), `forbidden` (403).
       required: [error]

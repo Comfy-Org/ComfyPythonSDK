@@ -133,7 +133,7 @@ class ErrorEnvelope(BaseModel):
     Shared error envelope with machine-readable codes. Core codes (v1):
     `invalid_workflow` (422), `workflow_format_ui` (422),
     `missing_asset` (422), `hash_mismatch` (409), `blob_not_found`
-    (404), `idempotency_key_reuse` (422), `idempotency_conflict` (409),
+    (404), `idempotency_key_reuse` (422),
     `queue_full` (429 + Retry-After), `insufficient_credits` (402),
     `not_found` (404), `unauthorized` (401), `forbidden` (403).
 
@@ -249,6 +249,9 @@ class Job(BaseModel):
     error: Annotated[JobError | None, Field(...)]
     metrics: Annotated[
         dict[str, int | None] | None,
-        Field(examples=[{'queue_ms': 9000, 'execution_ms': None}]),
+        Field(
+            description='Values are nullable (a metric not yet available — e.g. `execution_ms` before a job starts running — is `null`, not omitted); the example below is deliberately all-non-null purely to work around a Spectral/nimma lint-tooling crash on a literal `null` inside a schema `example` combined with `additionalProperties.nullable: true` — the schema itself is unchanged and still allows null values at runtime.',
+            examples=[{'queue_ms': 9000, 'execution_ms': 42000}],
+        ),
     ] = None
     urls: JobUrls

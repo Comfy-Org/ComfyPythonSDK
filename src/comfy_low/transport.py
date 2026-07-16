@@ -303,8 +303,8 @@ class ComfyLow:
         *,
         idempotency_key: str | None = None,
         timeout: Any = _UNSET,
-    ) -> tuple[Job, bool]:
-        """POST /api/v2/jobs — returns ``(job, replayed)``."""
+    ) -> Job:
+        """POST /api/v2/jobs."""
         headers: dict[str, str] = {}
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
@@ -316,8 +316,7 @@ class ComfyLow:
             timeout=timeout,
         )
         data = self._p.parse_or_raise(resp, (201,))
-        replayed = resp.headers.get("Idempotency-Replayed") == "true"
-        return Job.model_validate(data), replayed
+        return Job.model_validate(data)
 
     def get_job(self, job_id_or_url: str, *, timeout: Any = _UNSET) -> Job:
         """GET /api/v2/jobs/{id} (or an absolute self link)."""
@@ -527,7 +526,7 @@ class AsyncComfyLow:
         *,
         idempotency_key: str | None = None,
         timeout: Any = _UNSET,
-    ) -> tuple[Job, bool]:
+    ) -> Job:
         headers: dict[str, str] = {}
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
@@ -539,8 +538,7 @@ class AsyncComfyLow:
             timeout=timeout,
         )
         data = self._p.parse_or_raise(resp, (201,))
-        replayed = resp.headers.get("Idempotency-Replayed") == "true"
-        return Job.model_validate(data), replayed
+        return Job.model_validate(data)
 
     async def get_job(self, job_id_or_url: str, *, timeout: Any = _UNSET) -> Job:
         path = job_id_or_url if _looks_like_path(job_id_or_url) else f"/jobs/{job_id_or_url}"

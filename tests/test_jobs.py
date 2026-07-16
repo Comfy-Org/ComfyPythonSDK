@@ -7,8 +7,10 @@ from __future__ import annotations
 import pytest
 
 import comfy_sdk.client as _client_module
+from comfy_low.errors import IdempotencyKeyReuse as LowIdempotencyKeyReuse
 from comfy_sdk import (
     Comfy,
+    IdempotencyKeyReuse,
     InvalidWorkflow,
     JobFailed,
     MissingAsset,
@@ -35,22 +37,27 @@ def test_run_completes_via_polling_when_sse_absent(server, tmp_path) -> None:
     assert server.state.events_connect_count == 0  # SSE never used
 
 
-def test_idempotent_submit_replays_same_job(server) -> None:
+def test_idempotent_submit_rejects_reused_key(server) -> None:
+    # Keys are single-use (reject-on-duplicate, no replay): reusing the same
+    # explicit key raises IdempotencyKeyReuse rather than replaying the job.
     with Comfy(server.base_url) as client:
         wf = _wf(client)
         j1 = client.submit(wf, idempotency_key="stable-key-123")
-        j2 = client.submit(wf, idempotency_key="stable-key-123")
-    assert j1.id == j2.id
-    # Two POSTs reached the server, but the second was a replay (same id).
+        assert j1.id.startswith("job_")
+        with pytest.raises(IdempotencyKeyReuse):
+            client.submit(wf, idempotency_key="stable-key-123")
+    # Both POSTs reached the server; the second was rejected, not replayed.
     assert server.state.submit_count == 2
 
 
-def test_low_level_submit_reports_replayed_header(server) -> None:
+def test_low_level_submit_rejects_reused_key(server) -> None:
+    # The low layer surfaces the protocol-level IdempotencyKeyReuse on reuse;
+    # post_jobs returns a Job directly (there is no replay flag / header).
     with Comfy(server.base_url) as client:
-        _job, replayed1 = client._low.post_jobs({"a": 1}, idempotency_key="k")
-        _job2, replayed2 = client._low.post_jobs({"a": 1}, idempotency_key="k")
-    assert replayed1 is False
-    assert replayed2 is True
+        job = client._low.post_jobs({"a": 1}, idempotency_key="k")
+        assert job.id.startswith("job_")
+        with pytest.raises(LowIdempotencyKeyReuse):
+            client._low.post_jobs({"a": 1}, idempotency_key="k")
 
 
 def test_queue_full_retries_with_retry_after(server) -> None:

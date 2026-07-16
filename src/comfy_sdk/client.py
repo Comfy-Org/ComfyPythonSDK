@@ -89,7 +89,7 @@ class Comfy:
         deadline = time.monotonic() + _QUEUE_RETRY_BUDGET
         while True:
             try:
-                model, _replayed = self._low.post_jobs(graph, idempotency_key=key)
+                model = self._low.post_jobs(graph, idempotency_key=key)
                 return Job(self._low, model)
             except ApiError as exc:
                 err = to_sdk_error(exc)
@@ -155,7 +155,7 @@ class AsyncComfy:
         deadline = time.monotonic() + _QUEUE_RETRY_BUDGET
         while True:
             try:
-                model, _replayed = await self._low.post_jobs(graph, idempotency_key=key)
+                model = await self._low.post_jobs(graph, idempotency_key=key)
                 return AsyncJob(self._low, model)
             except ApiError as exc:
                 err = to_sdk_error(exc)

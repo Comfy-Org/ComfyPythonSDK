@@ -52,7 +52,8 @@ class ServerState:
     events_connect_count: int = 0
     submit_count: int = 0
     last_workflow: dict[str, Any] | None = None
-    # Idempotency-Key -> job id (for replay).
+    # Idempotency-Key -> job id of the first (accepted) request, so a reuse of
+    # the same key can be detected and rejected (single-use, no replay).
     idempotency: dict[str, str] = field(default_factory=dict)
     # Raw bytes of the last POST /assets multipart body (so tests can inspect
     # the parts actually sent — e.g. how many `tags` fields were included).
@@ -285,12 +286,9 @@ def _make_handler(state: ServerState):
             key = self.headers.get("Idempotency-Key")
 
             if key and key in state.idempotency:
-                job_id = state.idempotency[key]
-                self._json(
-                    201,
-                    _job_json(job_id, "queued"),
-                    headers={"Idempotency-Replayed": "true"},
-                )
+                # Reject-on-duplicate (single-use keys, no replay): any reuse of
+                # an already-claimed key is 422 idempotency_key_reuse.
+                self._err(422, "idempotency_key_reuse", "Idempotency-Key already used")
                 return
 
             if state.queue_full_times > 0:
