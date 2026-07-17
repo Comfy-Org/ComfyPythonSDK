@@ -73,7 +73,9 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
-          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$'; then
+          # Full SemVer 2.0: X.Y.Z, with an optional -prerelease and an
+          # optional +build-metadata segment (both may be present together).
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
             echo "::error::Release tag '${TAG}' is not a valid version (expected vX.Y.Z)."
             exit 1
           fi
