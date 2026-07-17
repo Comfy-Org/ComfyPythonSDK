@@ -133,8 +133,13 @@ exceptions, all importable from the top-level package and all subclasses of
   catches this locally before it ever reaches the server.
 - `MissingAsset` — a `core/ASSET` reference could not be resolved.
 - `HashMismatch`, `BlobNotFound` — asset upload/dedup failures.
-- `IdempotencyConflict`, `IdempotencyKeyReuse` — idempotency-key conflicts
-  when retrying a submit.
+- `IdempotencyKeyReuse` — the `Idempotency-Key` was reused. `submit()` (and
+  `run()`) attach a fresh key to every call, so an accidental exact resend never
+  runs the workflow twice. Keys are single-use — reject-on-duplicate, there is
+  no replay — so if you pass your own `idempotency_key=` and reuse it, the second
+  call raises this. After an ambiguous failure (e.g. a timeout where you don't
+  know if the job was created), poll or list your jobs rather than resubmitting
+  with the same key.
 - `InsufficientCredits` — the account can't afford the job.
 - `QueueFull` — backpressure; carries `.retry_after` seconds. `client.submit`
   already retries this automatically for a bounded budget before giving up
