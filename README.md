@@ -26,12 +26,20 @@ job.get_outputs("13")[0].to_file("out.png")
 
 Requires **Python 3.10+**. Dependencies: `httpx`, `blake3`, `pydantic` (v2).
 
-This package is not yet published to PyPI — publishing is scaffolded in
-`.github/workflows/publish.yml` but intentionally disabled until a PyPI
-Trusted Publisher is configured. Until then, install from source in editable
-mode:
+```bash
+pip install comfy-sdk
+```
+
+Releases are published to PyPI from a GitHub Release (tag `vX.Y.Z`) by
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml), using
+PyPI's Trusted Publishing (OIDC) — no API token is stored in this repo.
+
+To install from source instead (for local development, or to track an
+unreleased commit):
 
 ```bash
+git clone https://github.com/Comfy-Org/ComfyPythonSDK
+cd ComfyPythonSDK
 pip install -e .
 # with everything needed to lint/type-check/test locally:
 pip install -e ".[dev]"
