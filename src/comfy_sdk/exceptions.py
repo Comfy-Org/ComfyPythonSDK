@@ -124,19 +124,12 @@ def to_sdk_error(exc: ApiError) -> ComfyError:
             details=exc.details,
         )
     cls = _BY_CODE.get(exc.code, ComfyError)
-    if cls is Unauthorized and not _has_hint(exc):
-        # Preserve the demo client's helpful hint about the missing key.
-        pass
     return cls(
         exc.message,
         code=exc.code,
         http_status=exc.http_status,
         details=exc.details,
     )
-
-
-def _has_hint(exc: ApiError) -> bool:
-    return bool(exc.message)
 
 
 @contextmanager
