@@ -126,3 +126,27 @@ def test_authorized_when_key_present(server) -> None:
     with Comfy(server.base_url, api_key="ck_test") as client:
         job = client.submit(_wf(client))
     assert job.id.startswith("job_")
+
+
+def test_cancel_reaches_server_and_marks_canceling(server) -> None:
+    # cancel() hits the server and reflects its `canceling` response, which is
+    # deliberately NOT a terminal state.
+    with Comfy(server.base_url) as client:
+        job = client.submit(_wf(client))
+        job.cancel()
+        assert job.status == "canceling"
+
+
+def test_wait_raises_timeout_when_job_never_terminal(server) -> None:
+    server.state.polls_to_succeed = 10_000  # never terminal within the deadline
+    with Comfy(server.base_url) as client:
+        job = client.submit(_wf(client))
+        with pytest.raises(TimeoutError):
+            job.wait(timeout=0.05)
+
+
+def test_run_raises_timeout_when_job_never_terminal(server) -> None:
+    server.state.polls_to_succeed = 10_000
+    with Comfy(server.base_url) as client:
+        with pytest.raises(TimeoutError):
+            client.run(_wf(client), timeout=0.05)
