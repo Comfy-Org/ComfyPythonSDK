@@ -93,3 +93,40 @@ async def test_async_error_mapping(server) -> None:
     async with AsyncComfy(server.base_url) as client:
         with pytest.raises(MissingAsset):
             await client.submit(_wf(client))
+
+
+async def test_async_cancel_reaches_server(server) -> None:
+    async with AsyncComfy(server.base_url) as client:
+        job = await client.submit(_wf(client))
+        await job.cancel()
+        assert job.status == "canceling"
+
+
+async def test_async_wait_raises_timeout(server) -> None:
+    server.state.polls_to_succeed = 10_000
+    async with AsyncComfy(server.base_url) as client:
+        job = await client.submit(_wf(client))
+        with pytest.raises(TimeoutError):
+            await job.wait(timeout=0.05)
+
+
+async def test_async_core_asset_substitution(server, tmp_path) -> None:
+    # The async commit -> mint -> substitute pipeline, mirroring the sync test.
+    p = tmp_path / "photo.png"
+    p.write_bytes(b"pixels")
+    async with AsyncComfy(server.base_url) as client:
+        asset = client.assets.from_file(p)
+        wf = client.workflows.from_json(
+            {"10": {"class_type": "LoadImage", "inputs": {"image": asset}}}
+        )
+        await client.submit(wf)
+    ref = server.state.last_workflow["10"]["inputs"]["image"]
+    assert ref["__type"] == "core/ASSET"
+    assert ref["info"]["id"] == "asset_uploaded_01"
+
+
+async def test_async_queue_full_retries_with_retry_after(server) -> None:
+    server.state.queue_full_times = 2  # 429 twice, then 201
+    async with AsyncComfy(server.base_url) as client:
+        await client.submit(_wf(client))
+    assert server.state.submit_count == 3
