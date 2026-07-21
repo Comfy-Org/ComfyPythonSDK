@@ -66,6 +66,24 @@ requests aimed at the configured `base_url`'s own origin — a server-returned
 follow-up link (`job.urls.self`/`cancel`/`events`, or a redirected asset
 download) pointing anywhere else never receives it.
 
+## Partner (API) node auth
+
+Workflows that use partner/API nodes (Gemini, etc.) need a Comfy API key to
+authenticate them. Pass it per submit with `api_key=`. This is **not** the same
+as the `api_key` you construct `Comfy` with: the constructor key authenticates
+*you* to the server, while this one authenticates the partner nodes *inside* the
+workflow (it is often the same `comfyui-…` key):
+
+```python
+job = client.run(wf, api_key="comfyui-...")
+# or drive it yourself:
+job = client.submit(wf, api_key="comfyui-...")
+```
+
+The SDK sends it once as `extra_data.api_key_comfy_org` alongside the workflow —
+one key authenticates every partner node in the graph. It is never logged or
+persisted by the SDK. Omit `api_key` and no `extra_data` is sent at all.
+
 ## Assets and `core/ASSET`
 
 `client.assets.from_file(...)` / `from_bytes(...)` / `from_stream(...)` /

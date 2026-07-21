@@ -125,6 +125,23 @@ async def test_async_core_asset_substitution(server, tmp_path) -> None:
     assert ref["info"]["id"] == "asset_uploaded_01"
 
 
+async def test_async_submit_with_api_key_sends_extra_data(server) -> None:
+    # Mirrors the sync `test_submit_with_api_key_sends_extra_data_sibling_of_workflow`.
+    async with AsyncComfy(server.base_url) as client:
+        await client.submit(_wf(client), api_key="comfyui-secret-key")
+    body = server.state.last_jobs_body
+    assert body is not None
+    assert body["extra_data"] == {"api_key_comfy_org": "comfyui-secret-key"}
+
+
+async def test_async_submit_without_api_key_omits_extra_data(server) -> None:
+    async with AsyncComfy(server.base_url) as client:
+        await client.submit(_wf(client))
+    body = server.state.last_jobs_body
+    assert body is not None
+    assert "extra_data" not in body
+
+
 async def test_async_queue_full_retries_with_retry_after(server) -> None:
     server.state.queue_full_times = 2  # 429 twice, then 201
     async with AsyncComfy(server.base_url) as client:

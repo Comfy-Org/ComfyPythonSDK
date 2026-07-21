@@ -5,9 +5,13 @@ namespaces plus ``submit`` / ``run`` — over a shared sans-IO core. Only the
 awaiting methods are duplicated; the rules (idempotency, 429 backoff, asset
 materialization, UI-format detection) live in ``_core`` and are called from both.
 
-Per-surface key behavior is inherited from ``comfy_low``: pass ``api_key`` for
-Comfy Cloud / serverless; leave it unset for a self-hosted proxy that has no auth
-(no credentials are then sent).
+Per-surface key behavior is inherited from ``comfy_low``: pass ``api_key`` to
+the constructor for Comfy Cloud / serverless; leave it unset for a self-hosted
+proxy that has no auth (no credentials are then sent). That constructor key is
+this client's own credential (sent as the ``Authorization`` bearer token) and
+is unrelated to the ``api_key`` accepted by ``submit``/``run``, which
+authenticates partner (API) nodes embedded in a workflow (e.g. Gemini) and is
+sent in the request body instead.
 """
 
 from __future__ import annotations
@@ -72,7 +76,13 @@ class Comfy:
             refs[id(h)] = h.as_reference()
         return _core.substitute_asset_handles(workflow.json, refs)
 
-    def submit(self, workflow: Workflow, *, idempotency_key: str | None = None) -> Job:
+    def submit(
+        self,
+        workflow: Workflow,
+        *,
+        api_key: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Job:
         """Submit a workflow. Retries ``queue_full`` with ``Retry-After``.
 
         Sends an auto-generated ``Idempotency-Key`` so the server rejects an
@@ -82,14 +92,21 @@ class Comfy:
         idempotent, pass an explicit ``idempotency_key`` and reuse it. Note a
         reused key is *rejected*, not replayed: on reuse, catch the error and
         poll/list for the job the first attempt already created.
+
+        ``api_key`` authenticates partner (API) nodes embedded in the workflow
+        (e.g. Gemini) — unrelated to idempotency and unrelated to the bearer
+        token this client was constructed with. It is never persisted or
+        logged by the SDK, and is sent as ``extra_data.api_key_comfy_org``
+        only when supplied; omitted from the request entirely otherwise.
         """
         _guard_ui_format(workflow)
         graph = self._materialize(workflow)
         key = idempotency_key or _core.new_idempotency_key()
+        extra_data = _core.extra_data_for(api_key)
         deadline = time.monotonic() + _QUEUE_RETRY_BUDGET
         while True:
             try:
-                model = self._low.post_jobs(graph, idempotency_key=key)
+                model = self._low.post_jobs(graph, idempotency_key=key, extra_data=extra_data)
                 return Job(self._low, model)
             except ApiError as exc:
                 err = to_sdk_error(exc)
@@ -98,9 +115,15 @@ class Comfy:
                     continue
                 raise err from exc
 
-    def run(self, workflow: Workflow, *, timeout: float | None = None) -> Job:
+    def run(
+        self,
+        workflow: Workflow,
+        *,
+        api_key: str | None = None,
+        timeout: float | None = None,
+    ) -> Job:
         """Submit, then poll to terminal (authoritative). Raises on failure."""
-        job = self.submit(workflow)
+        job = self.submit(workflow, api_key=api_key)
         return job.result() if timeout is None else _run_with_timeout(job, timeout)
 
 
@@ -146,16 +169,24 @@ class AsyncComfy:
             refs[id(h)] = await h.as_reference()
         return _core.substitute_asset_handles(workflow.json, refs)
 
-    async def submit(self, workflow: Workflow, *, idempotency_key: str | None = None) -> AsyncJob:
+    async def submit(
+        self,
+        workflow: Workflow,
+        *,
+        api_key: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> AsyncJob:
+        """Mirrors :meth:`Comfy.submit` — see there for ``api_key`` details."""
         import asyncio
 
         _guard_ui_format(workflow)
         graph = await self._materialize(workflow)
         key = idempotency_key or _core.new_idempotency_key()
+        extra_data = _core.extra_data_for(api_key)
         deadline = time.monotonic() + _QUEUE_RETRY_BUDGET
         while True:
             try:
-                model = await self._low.post_jobs(graph, idempotency_key=key)
+                model = await self._low.post_jobs(graph, idempotency_key=key, extra_data=extra_data)
                 return AsyncJob(self._low, model)
             except ApiError as exc:
                 err = to_sdk_error(exc)
@@ -164,11 +195,17 @@ class AsyncComfy:
                     continue
                 raise err from exc
 
-    async def run(self, workflow: Workflow, *, timeout: float | None = None) -> AsyncJob:
+    async def run(
+        self,
+        workflow: Workflow,
+        *,
+        api_key: str | None = None,
+        timeout: float | None = None,
+    ) -> AsyncJob:
         from ._core import SUCCESS
         from .exceptions import JobFailed
 
-        job = await self.submit(workflow)
+        job = await self.submit(workflow, api_key=api_key)
         if timeout is None:
             return await job.result()
         await job.wait(timeout=timeout)

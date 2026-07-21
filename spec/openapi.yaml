@@ -362,6 +362,18 @@ paths:
                   type: object
                   description: API-format workflow graph, verbatim.
                   additionalProperties: true
+                extra_data:
+                  type: object
+                  description: >-
+                    Optional, sibling of `workflow` (never nested inside it).
+                    Omit entirely when there is no key to send — an empty
+                    `extra_data` object is not sent by the SDK and should not
+                    be sent by other clients either.
+                  additionalProperties: false
+                  properties:
+                    api_key_comfy_org:
+                      type: string
+                      description: API key for partner (API) nodes.
       responses:
         '201':
           description: Job created and queued.

@@ -302,17 +302,28 @@ class ComfyLow:
         workflow: dict[str, Any],
         *,
         idempotency_key: str | None = None,
+        extra_data: dict[str, Any] | None = None,
         timeout: Any = _UNSET,
     ) -> Job:
-        """POST /api/v2/jobs."""
+        """POST /api/v2/jobs.
+
+        ``extra_data`` (e.g. ``{"api_key_comfy_org": "..."}``) is a sibling of
+        ``workflow`` in the body, never nested inside it. Omitted from the
+        request entirely when ``None`` — the server rejects an empty
+        ``extra_data`` object, and a caller with no partner key should never
+        send one.
+        """
         headers: dict[str, str] = {}
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
+        body: dict[str, Any] = {"workflow": workflow}
+        if extra_data:
+            body["extra_data"] = extra_data
         resp = self.raw_request(
             "POST",
             "/jobs",
             headers=headers,
-            json={"workflow": workflow},
+            json=body,
             timeout=timeout,
         )
         data = self._p.parse_or_raise(resp, (201,))
@@ -525,16 +536,21 @@ class AsyncComfyLow:
         workflow: dict[str, Any],
         *,
         idempotency_key: str | None = None,
+        extra_data: dict[str, Any] | None = None,
         timeout: Any = _UNSET,
     ) -> Job:
+        """POST /api/v2/jobs — see the sync ``post_jobs`` for ``extra_data``."""
         headers: dict[str, str] = {}
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
+        body: dict[str, Any] = {"workflow": workflow}
+        if extra_data:
+            body["extra_data"] = extra_data
         resp = await self.raw_request(
             "POST",
             "/jobs",
             headers=headers,
-            json={"workflow": workflow},
+            json=body,
             timeout=timeout,
         )
         data = self._p.parse_or_raise(resp, (201,))

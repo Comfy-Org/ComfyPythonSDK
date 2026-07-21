@@ -23,6 +23,20 @@ def new_idempotency_key() -> str:
     return str(uuid.uuid4())
 
 
+def extra_data_for(api_key: str | None) -> dict[str, Any] | None:
+    """Build the wire ``extra_data`` object carrying the partner API key.
+
+    ``api_key`` authenticates partner (API) nodes (e.g. Gemini) embedded in a
+    workflow — it is unrelated to the client's own ``Authorization`` bearer
+    token. Returns ``None`` when no key is supplied, so callers omit
+    ``extra_data`` from the request entirely rather than sending an empty
+    object.
+    """
+    if not api_key:
+        return None
+    return {"api_key_comfy_org": api_key}
+
+
 def is_terminal(status: str) -> bool:
     return status in TERMINAL
 
