@@ -193,7 +193,7 @@ class AssetReference(BaseModel):
     `info.id` (the asset UUID) is required in v1 and authoritative;
     `hash` and `file_path` are optional staging/lookup hints and never
     override a present `id`. A malformed reference or one that is not
-    resolvable/ready/owned by the caller fails submission with 422
+    resolvable/owned by the caller fails submission with 422
     `missing_asset`.
 
     """
