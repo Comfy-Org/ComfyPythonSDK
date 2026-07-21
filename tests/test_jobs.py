@@ -128,6 +128,46 @@ def test_authorized_when_key_present(server) -> None:
     assert job.id.startswith("job_")
 
 
+def test_submit_with_api_key_sends_extra_data_sibling_of_workflow(server) -> None:
+    # The partner-node API key must ride alongside `workflow` as `extra_data`,
+    # not nested inside it, and use the exact wire key `api_key_comfy_org`.
+    with Comfy(server.base_url) as client:
+        client.submit(_wf(client), api_key="comfyui-secret-key")
+    body = server.state.last_jobs_body
+    assert body is not None
+    assert body["extra_data"] == {"api_key_comfy_org": "comfyui-secret-key"}
+    assert "workflow" in body
+    assert "api_key_comfy_org" not in body["workflow"]  # sibling, never nested
+
+
+def test_submit_without_api_key_omits_extra_data_entirely(server) -> None:
+    # No key supplied -> no `extra_data` key at all (never an empty object).
+    with Comfy(server.base_url) as client:
+        client.submit(_wf(client))
+    body = server.state.last_jobs_body
+    assert body is not None
+    assert "extra_data" not in body
+
+
+def test_submit_with_empty_string_api_key_omits_extra_data(server) -> None:
+    # An empty string is "no key": no `extra_data` on the wire. Pinned so the
+    # TypeScript SDK stays in lockstep with this behavior.
+    with Comfy(server.base_url) as client:
+        client.submit(_wf(client), api_key="")
+    body = server.state.last_jobs_body
+    assert body is not None
+    assert "extra_data" not in body
+
+
+def test_run_forwards_api_key_to_submit(server) -> None:
+    # `run()` is submit-then-wait; the api_key must still reach the wire.
+    with Comfy(server.base_url) as client:
+        client.run(_wf(client), api_key="comfyui-secret-key")
+    body = server.state.last_jobs_body
+    assert body is not None
+    assert body["extra_data"] == {"api_key_comfy_org": "comfyui-secret-key"}
+
+
 def test_cancel_reaches_server_and_marks_canceling(server) -> None:
     # cancel() hits the server and reflects its `canceling` response, which is
     # deliberately NOT a terminal state.

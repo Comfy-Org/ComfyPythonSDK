@@ -83,6 +83,15 @@ PUBLIC_COMFY_ORG_REPOS = {
     "comfy-api-proxy",
     "comfy-cloud-mcp-server",
 }
+# CODEOWNERS team handles (`@Comfy-Org/<team>`) are inherently public on a
+# public repo -- GitHub renders the CODEOWNERS owners to anyone who can see the
+# repo, so listing them here is not a leak. These mirror the sibling repos'
+# CODEOWNERS (e.g. comfy-api-proxy). An `@Comfy-Org/<team>` handle NOT in this
+# set is still flagged, so a genuinely-internal team reference surfaces.
+PUBLIC_COMFY_ORG_TEAMS = {
+    "comfy-cloud-team",
+    "core-engine-team",
+}
 REPO_REF_RE = re.compile(r"Comfy-Org/([A-Za-z0-9_.-]+)")
 
 
@@ -119,10 +128,19 @@ def _check_file(rel: Path) -> list[str]:
                 )
 
         for match in REPO_REF_RE.finditer(line):
-            repo = match.group(1)
-            if repo not in PUBLIC_COMFY_ORG_REPOS:
+            name = match.group(1)
+            # A leading `@` makes this a CODEOWNERS team handle, not a repo ref.
+            if match.start() > 0 and line[match.start() - 1] == "@":
+                if name not in PUBLIC_COMFY_ORG_TEAMS:
+                    findings.append(
+                        f"{rel}:{lineno}: reference to @Comfy-Org/{name}, a team not in the "
+                        "known-public allowlist (scripts/check_public_repo_hygiene.py) -- "
+                        "confirm it's public and add it, or remove the reference"
+                    )
+                continue
+            if name not in PUBLIC_COMFY_ORG_REPOS:
                 findings.append(
-                    f"{rel}:{lineno}: reference to Comfy-Org/{repo}, which is not in the "
+                    f"{rel}:{lineno}: reference to Comfy-Org/{name}, which is not in the "
                     "known-public allowlist (scripts/check_public_repo_hygiene.py) -- "
                     "confirm it's public and add it, or remove the reference"
                 )

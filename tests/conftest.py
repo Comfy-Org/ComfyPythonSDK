@@ -52,6 +52,9 @@ class ServerState:
     events_connect_count: int = 0
     submit_count: int = 0
     last_workflow: dict[str, Any] | None = None
+    # The full POST /jobs body (so a test can assert `extra_data` is present
+    # with the right value, or absent entirely, without touching last_workflow).
+    last_jobs_body: dict[str, Any] | None = None
     # Idempotency-Key -> job id of the first (accepted) request, so a reuse of
     # the same key can be detected and rejected (single-use, no replay).
     idempotency: dict[str, str] = field(default_factory=dict)
@@ -283,6 +286,7 @@ def _make_handler(state: ServerState):
             state.submit_count += 1
             body = json.loads(self._read_body() or b"{}")
             state.last_workflow = body.get("workflow")
+            state.last_jobs_body = body
             key = self.headers.get("Idempotency-Key")
 
             if key and key in state.idempotency:
