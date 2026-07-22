@@ -33,6 +33,14 @@ from .sse import RawEvent, SSEDecoder
 _API = "/api/v2"
 _UNSET = object()
 
+# SSE read-idle timeout. The server sends keepalive comments roughly every 15s,
+# so no data at all for ~3x that means the connection has silently stalled
+# ("zombie": open but delivering nothing) rather than being legitimately idle.
+# Applying a read timeout makes that case raise a ReadTimeout, which
+# comfy_sdk.Job.events() catches and turns into a poll/reconnect — instead of
+# blocking iter_lines() forever. (Pass timeout=None to opt out of the timeout.)
+_SSE_IDLE_TIMEOUT = httpx.Timeout(10.0, read=45.0)
+
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
@@ -335,17 +343,19 @@ class ComfyLow:
         resp = self.raw_request("GET", path, timeout=timeout)
         return Job.model_validate(self._p.parse_or_raise(resp, (200,)))
 
-    def get_job_events(self, job_id_or_url: str, *, timeout: Any = None) -> Iterator[RawEvent]:
+    def get_job_events(self, job_id_or_url: str, *, timeout: Any = _UNSET) -> Iterator[RawEvent]:
         """GET /api/v2/jobs/{id}/events — raw live SSE iterator (escape hatch).
 
         No reconnection here; a single connection's frames. ``comfy_sdk`` adds the
-        reconnect loop. ``timeout=None`` by default (an idle stream must not time
-        out mid-job).
+        reconnect loop. Defaults to a read-idle timeout (``_SSE_IDLE_TIMEOUT``, well
+        above the server's keepalive interval) so a silently-stalled connection
+        raises instead of blocking forever; pass ``timeout=None`` to disable.
         """
         path = job_id_or_url if _looks_like_path(job_id_or_url) else f"/jobs/{job_id_or_url}/events"
         headers = {"Accept": "text/event-stream"}
         decoder = SSEDecoder()
-        with self.open("GET", path, headers=headers, timeout=timeout) as resp:
+        eff_timeout = _SSE_IDLE_TIMEOUT if timeout is _UNSET else timeout
+        with self.open("GET", path, headers=headers, timeout=eff_timeout) as resp:
             if resp.status_code != 200:
                 resp.read()
                 self._p.parse_or_raise(resp, (200,))
@@ -562,12 +572,15 @@ class AsyncComfyLow:
         return Job.model_validate(self._p.parse_or_raise(resp, (200,)))
 
     async def get_job_events(
-        self, job_id_or_url: str, *, timeout: Any = None
+        self, job_id_or_url: str, *, timeout: Any = _UNSET
     ) -> AsyncIterator[RawEvent]:
+        # Read-idle timeout by default (see the sync get_job_events); a stalled
+        # connection raises so comfy_sdk falls back to poll/reconnect.
         path = job_id_or_url if _looks_like_path(job_id_or_url) else f"/jobs/{job_id_or_url}/events"
         headers = {"Accept": "text/event-stream"}
         decoder = SSEDecoder()
-        async with self.open("GET", path, headers=headers, timeout=timeout) as resp:
+        eff_timeout = _SSE_IDLE_TIMEOUT if timeout is _UNSET else timeout
+        async with self.open("GET", path, headers=headers, timeout=eff_timeout) as resp:
             if resp.status_code != 200:
                 await resp.aread()
                 self._p.parse_or_raise(resp, (200,))

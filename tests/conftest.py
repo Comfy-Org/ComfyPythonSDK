@@ -11,8 +11,9 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import pytest
@@ -38,8 +39,11 @@ class ServerState:
     polls_to_succeed: int = 1
     # Terminal status the job reaches.
     terminal_status: str = "succeeded"
-    # SSE behavior: "reconnect" drops the first stream before terminal.
+    # SSE behavior: "reconnect" drops the first stream before terminal;
+    # "stall" sends a couple frames then holds the connection open, silent
+    # (a "zombie": no terminal, no close) for `stall_seconds`.
     sse_mode: str = "normal"
+    stall_seconds: float = 2.0
     # If set, GET /assets/{id}/content responds 302 to this URL instead of
     # serving bytes directly (simulates a signed-URL redirect to another host).
     redirect_content_to: str | None = None
@@ -236,6 +240,14 @@ def _make_handler(state: ServerState):
                 # First connection: a progress frame, then drop without terminal.
                 frame("progress", {"value": 0.4, "nodes_done": 4, "nodes_total": 10})
                 return
+            if state.sse_mode == "stall" and state.events_connect_count == 1:
+                # First connection: a couple frames, then hold the socket open and
+                # silent (no terminal, no close) — a "zombie" the client must
+                # recover from via its read-idle timeout + poll fallback.
+                frame("status", {"status": "running"})
+                frame("progress", {"value": 0.3, "nodes_done": 3, "nodes_total": 10})
+                time.sleep(state.stall_seconds)
+                return
             # Normal (or the reconnect's 2nd connection): full run to terminal.
             frame("status", {"status": "running"})
             frame("progress", {"value": 0.5, "nodes_done": 5, "nodes_total": 10})
@@ -318,7 +330,7 @@ def _make_handler(state: ServerState):
 
 
 class _Server:
-    def __init__(self, httpd: HTTPServer, state: ServerState) -> None:
+    def __init__(self, httpd: ThreadingHTTPServer, state: ServerState) -> None:
         self._httpd = httpd
         self.state = state
         host, port = httpd.server_address[:2]
@@ -327,7 +339,7 @@ class _Server:
 
 def _start_server() -> _Server:
     state = ServerState()
-    httpd = HTTPServer(("127.0.0.1", 0), _make_handler(state))
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(state))
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     srv = _Server(httpd, state)
