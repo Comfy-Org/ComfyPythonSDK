@@ -364,11 +364,7 @@ paths:
                   additionalProperties: true
                 extra_data:
                   type: object
-                  description: >-
-                    Optional, sibling of `workflow` (never nested inside it).
-                    Omit entirely when there is no key to send — an empty
-                    `extra_data` object is not sent by the SDK and should not
-                    be sent by other clients either.
+                  description: 'Per-prompt ComfyUI `extra_data`, same shape as Comfy Cloud and local ComfyUI. Closed object: only the enumerated keys are accepted, keeping the contract fully typed. Forwarded to the worker per-prompt, never persisted, and excluded from idempotency comparison.'
                   additionalProperties: false
                   properties:
                     api_key_comfy_org:
@@ -440,6 +436,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
         '500':
           $ref: '#/components/responses/UpstreamError'
   /api/v2/jobs/{id}/events:
@@ -551,6 +549,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
         '500':
           $ref: '#/components/responses/UpstreamError'
 components:
@@ -615,6 +615,15 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     UpstreamError:
       description: '`upstream_error` — an unexpected failure reaching or processing the request in this implementation''s backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation''s own error-mapping notes. Every operation in this contract can fail this way.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimited:
+      description: '`rate_limited` — the caller has exceeded the request rate limit for this account. Account/rate-scoped, not job-specific — this can be returned even for a job id the caller doesn''t own or that doesn''t exist, without revealing which.'
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
       content:
         application/json:
           schema:
