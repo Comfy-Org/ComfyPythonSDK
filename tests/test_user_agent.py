@@ -6,6 +6,8 @@ own traffic via an ``app/{name}`` token, without clobbering the base identity.
 
 from __future__ import annotations
 
+import pytest
+
 from comfy_sdk import Comfy
 
 
@@ -30,3 +32,10 @@ def test_client_info_appends_app_token(server) -> None:
     ua = server.state.last_user_agent or ""
     assert ua.startswith("comfy-sdk-python/")
     assert ua.endswith(" app/glary-bot")
+
+
+def test_client_info_rejects_crlf() -> None:
+    # A CR/LF in the caller token must never reach the header (no injection).
+    for bad in ("evil\r\nX-Injected: 1", "line\nbreak", "carriage\rreturn"):
+        with pytest.raises(ValueError):
+            Comfy("https://api.comfy.org", client_info=bad)

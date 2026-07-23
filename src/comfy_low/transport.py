@@ -64,6 +64,11 @@ def _build_user_agent(client_info: str | None) -> str:
         f"({platform.python_implementation()} {sys.version_info.major}.{sys.version_info.minor})"
     )
     if client_info:
+        # A caller-set token goes verbatim into a header value; reject CR/LF so
+        # it can never split/inject headers (httpx would reject it anyway, but
+        # fail fast with a clear message at construction).
+        if "\r" in client_info or "\n" in client_info:
+            raise ValueError("client_info must not contain CR or LF characters")
         ua += f" app/{client_info}"
     return ua
 
