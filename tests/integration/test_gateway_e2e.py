@@ -1,6 +1,6 @@
 """Live end-to-end test of the SDK against a serverless gateway deployment:
-upload an input asset, submit an SD1.5 img2img workflow that references it,
-poll to a terminal state, download the output.
+upload an input asset, submit a workflow that references it, poll to a
+terminal state, download the output.
 
 Skipped unless pointed at a live deployment:
 
@@ -8,10 +8,10 @@ Skipped unless pointed at a live deployment:
     export COMFY_API_KEY="comfyui-..."
     pytest tests/integration/test_gateway_e2e.py -v
 
-Optional: COMFY_CKPT_NAME (defaults to the staging test distribution's
-SD1.5 checkpoint). First run streams a full multipart upload; reruns hit
-the by-hash dedup fast-path (the input image is deterministic), so both
-upload paths get coverage across two runs.
+The workflow uses only core nodes (no models), so any deployment works.
+First run streams a full multipart upload; reruns hit the by-hash dedup
+fast-path (the input image is deterministic), so both upload paths get
+coverage across two runs.
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ from comfy_sdk import Comfy
 
 BASE_URL = os.environ.get("COMFY_BASE_URL")
 API_KEY = os.environ.get("COMFY_API_KEY")
-CKPT_NAME = os.environ.get("COMFY_CKPT_NAME", "v1-5-pruned-emaonly.safetensors")
 INPUT_NAME = "sdk_e2e_input.png"
 JOB_TIMEOUT_S = 600  # cold start on a scale-to-zero deployment takes minutes
 
@@ -65,33 +64,11 @@ def _gradient_png(width: int = 512, height: int = 512) -> bytes:
     )
 
 
-def _img2img_workflow(image_ref: object) -> dict:
+def _edit_workflow(image_ref: object) -> dict:
     return {
-        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": CKPT_NAME}},
-        "2": {"class_type": "LoadImage", "inputs": {"image": image_ref}},
-        "3": {"class_type": "VAEEncode", "inputs": {"pixels": ["2", 0], "vae": ["1", 2]}},
-        "4": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {"text": "oil painting, thick brushstrokes, vivid colors", "clip": ["1", 1]},
-        },
-        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": "blurry, low quality", "clip": ["1", 1]}},
-        "6": {
-            "class_type": "KSampler",
-            "inputs": {
-                "model": ["1", 0],
-                "positive": ["4", 0],
-                "negative": ["5", 0],
-                "latent_image": ["3", 0],
-                "seed": 42,
-                "steps": 20,
-                "cfg": 7,
-                "sampler_name": "euler",
-                "scheduler": "normal",
-                "denoise": 0.6,
-            },
-        },
-        "7": {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["1", 2]}},
-        "8": {"class_type": "SaveImage", "inputs": {"filename_prefix": "sdk_e2e", "images": ["7", 0]}},
+        "1": {"class_type": "LoadImage", "inputs": {"image": image_ref}},
+        "2": {"class_type": "ImageInvert", "inputs": {"image": ["1", 0]}},
+        "3": {"class_type": "SaveImage", "inputs": {"filename_prefix": "sdk_e2e", "images": ["2", 0]}},
     }
 
 
@@ -117,11 +94,11 @@ def test_upload_dedup_roundtrip(client: Comfy, input_asset) -> None:
 
 
 def test_image_edit_by_name(client: Comfy, input_asset, tmp_path) -> None:
-    wf = client.workflows.from_json(_img2img_workflow(INPUT_NAME))
+    wf = client.workflows.from_json(_edit_workflow(INPUT_NAME))
     job = client.run(wf).wait(timeout=JOB_TIMEOUT_S)
 
     assert job.status == "succeeded", f"job {job.id} ended {job.status}: {job.error}"
-    outputs = job.get_outputs("8") or job.outputs
+    outputs = job.get_outputs("3") or job.outputs
     assert outputs, f"job {job.id} succeeded with no outputs"
 
     out_path = tmp_path / "sdk_e2e_out.png"
@@ -137,8 +114,8 @@ def test_image_edit_by_name(client: Comfy, input_asset, tmp_path) -> None:
     strict=False,
 )
 def test_image_edit_by_asset_handle(client: Comfy, input_asset, tmp_path) -> None:
-    wf = client.workflows.from_json(_img2img_workflow(INPUT_NAME))
-    wf.set_input("2", "image", input_asset)
+    wf = client.workflows.from_json(_edit_workflow(INPUT_NAME))
+    wf.set_input("1", "image", input_asset)
     job = client.run(wf).wait(timeout=JOB_TIMEOUT_S)
 
     assert job.status == "succeeded", f"job {job.id} ended {job.status}: {job.error}"
