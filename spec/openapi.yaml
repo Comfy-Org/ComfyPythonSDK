@@ -755,7 +755,7 @@ components:
         '
     JobUrls:
       type: object
-      description: Embedded follow-up links — follow these, don't build URLs.
+      description: Embedded follow-up links — follow these, don't build URLs. A link is either an absolute URL or a host-relative reference (leading `/`) that already includes any prefix the serving surface is mounted under (e.g. a serverless gateway's `/deployment/{deployment_id}/api/v2`). Clients MUST resolve a host-relative link against the request origin (scheme + authority), never against a configured base URL — joining it to a base URL that carries the same mount prefix duplicates the prefix.
       required:
       - self
       - events
