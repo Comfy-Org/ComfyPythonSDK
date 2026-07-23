@@ -105,12 +105,9 @@ class _Prepared:
         self._user_agent = _build_user_agent(client_info)
 
     def url(self, path: str) -> str:
-        # A path may be a follow-up link (job.urls.*) or an internal API path.
-        # Follow-up links are host-relative and already carry the mount prefix
-        # the server serves under (e.g. a gateway's /deployment/{id}/api/v2),
-        # so they resolve against the origin, not base_url — resolving against
-        # base_url would double the prefix. Internal shorthand paths (/jobs/…,
-        # /assets…) never contain /api/ and keep resolving under base_url.
+        # A server link (job.urls.*, marked by containing /api/) already carries
+        # the server's mount prefix, so it resolves against the origin — joining
+        # it to base_url would double the prefix on a prefix-mounted surface.
         if path.startswith("http"):
             return path
         if path.startswith("/") and "/api/" in path:
