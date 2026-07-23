@@ -1,8 +1,6 @@
-"""Live end-to-end test of the SDK against a serverless gateway deployment.
-
-Exercises the image-edit flow the platform team verified by hand on
-2026-07-23: upload an input asset, submit an SD1.5 img2img workflow that
-references it, poll to a terminal state, download the output.
+"""Live end-to-end test of the SDK against a serverless gateway deployment:
+upload an input asset, submit an SD1.5 img2img workflow that references it,
+poll to a terminal state, download the output.
 
 Skipped unless pointed at a live deployment:
 

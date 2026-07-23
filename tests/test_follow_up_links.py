@@ -6,9 +6,6 @@ links already include that mount prefix. Resolving them against ``base_url``
 (which carries the same prefix) doubles it and 404s; they must resolve against
 the scheme+authority only. Internal shorthand paths (``/jobs/…``, ``/assets…``)
 keep resolving under ``base_url + /api/v2``.
-
-Regression for the SDK↔gateway conformance bug found 2026-07-23: polling a
-job submitted through a deployment-scoped base URL 404'd on refresh.
 """
 
 from __future__ import annotations
