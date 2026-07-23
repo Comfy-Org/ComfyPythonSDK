@@ -52,8 +52,9 @@ class Comfy:
         api_key: str | None = None,
         *,
         timeout: float | None = 30.0,
+        client_info: str | None = None,
     ) -> None:
-        self._low = ComfyLow(base_url, api_key, timeout=timeout)
+        self._low = ComfyLow(base_url, api_key, timeout=timeout, client_info=client_info)
         self.assets = AssetFactory(self._low)
         self.workflows = WorkflowFactory()
         self.jobs = JobFactory(self._low)
@@ -146,8 +147,9 @@ class AsyncComfy:
         api_key: str | None = None,
         *,
         timeout: float | None = 30.0,
+        client_info: str | None = None,
     ) -> None:
-        self._low = AsyncComfyLow(base_url, api_key, timeout=timeout)
+        self._low = AsyncComfyLow(base_url, api_key, timeout=timeout, client_info=client_info)
         self.assets = AsyncAssetFactory(self._low)
         self.workflows = WorkflowFactory()
         self.jobs = AsyncJobFactory(self._low)

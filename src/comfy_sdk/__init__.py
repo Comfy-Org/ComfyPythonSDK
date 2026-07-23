@@ -51,7 +51,7 @@ from .exceptions import (
     WorkflowFormatUi,
 )
 from .jobs import AsyncJob, Job
-from .outputs import AsyncOutput, Output
+from .outputs import AsyncOutput, DownloadUrl, Output
 from .workflows import Workflow, WorkflowFactory
 
 __version__ = "0.1.0"
@@ -71,6 +71,7 @@ __all__ = [
     "AsyncJob",
     "Output",
     "AsyncOutput",
+    "DownloadUrl",
     # events
     "Event",
     "Progress",

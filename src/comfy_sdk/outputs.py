@@ -2,11 +2,14 @@
 
 An output is an asset: the bytes are retrievable via ``getAssetContent`` (which
 serves directly or ``302``-redirects to a signed URL) for as long as the job is
-retained. ``to_file`` streams to disk in chunks; ``to_bytes`` buffers.
+retained. ``to_file`` streams to disk in chunks; ``to_bytes`` buffers;
+``get_download_url`` resolves a fetchable URL without transferring any bytes.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from typing import BinaryIO
@@ -15,6 +18,20 @@ from comfy_low.models import Output as LowOutput
 from comfy_low.transport import AsyncComfyLow, ComfyLow
 
 _CHUNK = 64 * 1024
+
+
+@dataclass(frozen=True)
+class DownloadUrl:
+    """A directly-fetchable URL for one output, e.g. to hand to a downstream
+    consumer without streaming the bytes through the caller.
+
+    ``url`` is a short-lived, self-authorizing bearer credential in its own
+    right on backends that hand out signed URLs — whoever holds it can read
+    the asset until ``expires_at``, no separate auth required.
+    """
+
+    url: str
+    expires_at: datetime | None
 
 
 class Output:
@@ -71,6 +88,19 @@ class Output:
                 buf.extend(chunk)
         return bytes(buf)
 
+    def get_download_url(self) -> DownloadUrl:
+        """A directly-fetchable URL for this output — never throws.
+
+        On a Cloud/serverless backend this is a short-lived, self-authorizing
+        signed URL for object storage: anyone holding it can read the bytes
+        until ``expires_at``. On a self-hosted backend it is the content
+        endpoint itself (the same auth as every other call still applies), and
+        ``expires_at`` is ``None``. (A genuine failure — e.g. an unknown output
+        id — still raises the same typed error as any other call.)
+        """
+        url, expires_at = self._low.get_asset_content_url(self._model.id)
+        return DownloadUrl(url=url, expires_at=expires_at)
+
     def __repr__(self) -> str:
         return f"Output(node_id={self.node_id!r}, name={self.name!r}, id={self.id!r})"
 
@@ -122,6 +152,11 @@ class AsyncOutput:
             async for chunk in resp.aiter_bytes(_CHUNK):
                 buf.extend(chunk)
         return bytes(buf)
+
+    async def get_download_url(self) -> DownloadUrl:
+        """See the sync ``Output.get_download_url`` for the redirect/inline split."""
+        url, expires_at = await self._low.get_asset_content_url(self._model.id)
+        return DownloadUrl(url=url, expires_at=expires_at)
 
     def __repr__(self) -> str:
         return f"AsyncOutput(node_id={self.node_id!r}, name={self.name!r}, id={self.id!r})"

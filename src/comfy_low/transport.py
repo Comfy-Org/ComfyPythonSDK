@@ -17,11 +17,16 @@ live in ``comfy_sdk``.
 from __future__ import annotations
 
 import asyncio
+import platform
 import secrets
+import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime, timedelta, timezone
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from typing import Any, BinaryIO
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -42,6 +47,30 @@ _UNSET = object()
 _SSE_IDLE_TIMEOUT = httpx.Timeout(10.0, read=45.0)
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _build_user_agent(client_info: str | None) -> str:
+    """SDK identity sent on every request. This is request metadata (not
+    telemetry — no phone-home), so adoption is measurable server-side from
+    request logs. An optional caller-set ``app/{client_info}`` token lets an
+    integration attribute its own traffic.
+    """
+    try:
+        ver = _pkg_version("comfy-sdk")
+    except PackageNotFoundError:
+        ver = "0"
+    ua = (
+        f"comfy-sdk-python/{ver} "
+        f"({platform.python_implementation()} {sys.version_info.major}.{sys.version_info.minor})"
+    )
+    if client_info:
+        # A caller-set token goes verbatim into a header value; reject CR/LF so
+        # it can never split/inject headers (httpx would reject it anyway, but
+        # fail fast with a clear message at construction).
+        if "\r" in client_info or "\n" in client_info:
+            raise ValueError("client_info must not contain CR or LF characters")
+        ua += f" app/{client_info}"
+    return ua
 
 
 def _retry_after(resp: httpx.Response) -> int | None:
@@ -67,10 +96,11 @@ def _origin(url: str) -> tuple[str, str, int | None]:
 class _Prepared:
     """Sans-IO request building shared by both transports."""
 
-    def __init__(self, base_url: str, api_key: str | None) -> None:
+    def __init__(self, base_url: str, api_key: str | None, client_info: str | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self._base_origin = _origin(self.base_url)
+        self._user_agent = _build_user_agent(client_info)
 
     def url(self, path: str) -> str:
         # A path may be an absolute follow-up link (job.urls.*) or an API path.
@@ -81,7 +111,9 @@ class _Prepared:
         return self.base_url + _API + path
 
     def headers(self, url: str, extra: dict[str, str] | None = None) -> dict[str, str]:
-        h: dict[str, str] = {}
+        # User-Agent goes on every request (all origins — it is not a
+        # credential); a caller-supplied one in ``extra`` still wins.
+        h: dict[str, str] = {"User-Agent": self._user_agent}
         # Only authenticate when a key is set: a local proxy fronts a ComfyUI
         # with no auth, so we never leak credentials it does not want. And only
         # attach it when the resolved request URL is same-origin as base_url:
@@ -105,6 +137,29 @@ class _Prepared:
         except Exception:
             body = None
         raise error_from_envelope(resp.status_code, body, retry_after=_retry_after(resp))
+
+
+def parse_expiry(url: str) -> datetime | None:
+    """Expiry of a GCS V4 signed URL from its ``X-Goog-Date``/``X-Goog-Expires``
+    query params — mirrors the server's own signed-URL-expiry computation.
+
+    Returns ``None`` when either param is missing or malformed, which is the
+    normal case for a same-origin content URL (self-hosted backend) rather than
+    a signed one.
+    """
+    query = parse_qs(urlsplit(url).query)
+    date_vals = query.get("X-Goog-Date")
+    expires_vals = query.get("X-Goog-Expires")
+    if not date_vals or not expires_vals:
+        return None
+    try:
+        issued = datetime.strptime(date_vals[0], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        seconds = int(expires_vals[0])
+        return issued + timedelta(seconds=seconds)
+    except (ValueError, OverflowError):
+        # A malformed date/expires, or an ``expires`` so large the resulting
+        # datetime overflows, is treated as "no expiry" rather than raising.
+        return None
 
 
 def _new_boundary() -> str:
@@ -138,8 +193,9 @@ class ComfyLow:
         *,
         client: httpx.Client | None = None,
         timeout: float | None = 30.0,
+        client_info: str | None = None,
     ) -> None:
-        self._p = _Prepared(base_url, api_key)
+        self._p = _Prepared(base_url, api_key, client_info)
         self._own_client = client is None
         self._client = client or httpx.Client(timeout=timeout, follow_redirects=True)
 
@@ -304,6 +360,40 @@ class ComfyLow:
                 self._p.parse_or_raise(resp, (200, 206))
             yield resp
 
+    def get_asset_content_url(
+        self, asset_id: str, *, timeout: Any = _UNSET
+    ) -> tuple[str, datetime | None]:
+        """GET /api/v2/assets/{id}/content without following a redirect.
+
+        A Cloud/serverless backend answers with a redirect to a short-lived
+        signed URL (object storage); a self-hosted backend serves the bytes
+        inline (200/206), with no redirect at all. Either way this never reads
+        the body — only headers are needed to resolve the URL, so a large
+        asset's bytes are never pulled through this call.
+
+        ``follow_redirects=False`` is passed per-request (the shared client
+        otherwise follows redirects for every other call) because the
+        ``Location`` *is* the answer here — following it would fetch bytes we
+        don't want, and would also run the client's auth-header logic against
+        the redirect target, which must never see our bearer token.
+        """
+        path = f"/assets/{asset_id}/content"
+        url = self._p.url(path)
+        kw: dict[str, Any] = {}
+        if timeout is not _UNSET:
+            kw["timeout"] = timeout
+        with self._client.stream(
+            "GET", url, headers=self._p.headers(url), follow_redirects=False, **kw
+        ) as resp:
+            if resp.has_redirect_location:
+                location = resp.headers["Location"]
+                return location, parse_expiry(location)
+            if resp.status_code in (200, 206):
+                return url, None
+            resp.read()
+            self._p.parse_or_raise(resp, (200, 206))
+        raise AssertionError("unreachable: parse_or_raise always raises for a non-ok status")
+
     # -- jobs -------------------------------------------------------------
     def post_jobs(
         self,
@@ -379,8 +469,9 @@ class AsyncComfyLow:
         *,
         client: httpx.AsyncClient | None = None,
         timeout: float | None = 30.0,
+        client_info: str | None = None,
     ) -> None:
-        self._p = _Prepared(base_url, api_key)
+        self._p = _Prepared(base_url, api_key, client_info)
         self._own_client = client is None
         self._client = client or httpx.AsyncClient(timeout=timeout, follow_redirects=True)
 
@@ -540,6 +631,27 @@ class AsyncComfyLow:
                 await resp.aread()
                 self._p.parse_or_raise(resp, (200, 206))
             yield resp
+
+    async def get_asset_content_url(
+        self, asset_id: str, *, timeout: Any = _UNSET
+    ) -> tuple[str, datetime | None]:
+        """See the sync ``get_asset_content_url`` for the redirect/inline split."""
+        path = f"/assets/{asset_id}/content"
+        url = self._p.url(path)
+        kw: dict[str, Any] = {}
+        if timeout is not _UNSET:
+            kw["timeout"] = timeout
+        async with self._client.stream(
+            "GET", url, headers=self._p.headers(url), follow_redirects=False, **kw
+        ) as resp:
+            if resp.has_redirect_location:
+                location = resp.headers["Location"]
+                return location, parse_expiry(location)
+            if resp.status_code in (200, 206):
+                return url, None
+            await resp.aread()
+            self._p.parse_or_raise(resp, (200, 206))
+        raise AssertionError("unreachable: parse_or_raise always raises for a non-ok status")
 
     async def post_jobs(
         self,

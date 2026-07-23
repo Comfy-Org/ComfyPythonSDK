@@ -66,6 +66,15 @@ requests aimed at the configured `base_url`'s own origin — a server-returned
 follow-up link (`job.urls.self`/`cancel`/`events`, or a redirected asset
 download) pointing anywhere else never receives it.
 
+The SDK identifies itself via a `User-Agent` header (for support and usage
+analytics) — this is request metadata only; no other data is collected. Pass
+`client_info="my-app"` to append an `app/my-app` token so an integration can
+attribute its own traffic:
+
+```python
+client = Comfy("https://api.comfy.org", api_key="ck_...", client_info="my-app")
+```
+
 ## Partner (API) node auth
 
 Workflows that use partner/API nodes (Gemini, etc.) need a Comfy API key to
