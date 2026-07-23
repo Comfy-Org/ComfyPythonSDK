@@ -155,9 +155,11 @@ def parse_expiry(url: str) -> datetime | None:
     try:
         issued = datetime.strptime(date_vals[0], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
         seconds = int(expires_vals[0])
-    except ValueError:
+        return issued + timedelta(seconds=seconds)
+    except (ValueError, OverflowError):
+        # A malformed date/expires, or an ``expires`` so large the resulting
+        # datetime overflows, is treated as "no expiry" rather than raising.
         return None
-    return issued + timedelta(seconds=seconds)
 
 
 def _new_boundary() -> str:

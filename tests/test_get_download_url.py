@@ -50,6 +50,13 @@ def test_parse_expiry_returns_none_on_malformed_values() -> None:
     assert parse_expiry(bad_expires) is None
 
 
+def test_parse_expiry_returns_none_on_overflowing_expires() -> None:
+    # A huge expires parses as an int but overflows datetime addition — treat
+    # it as "no expiry" rather than raising OverflowError.
+    huge = "https://example.invalid?X-Goog-Date=20260710T180000Z&X-Goog-Expires=999999999999999999"
+    assert parse_expiry(huge) is None
+
+
 # -- cloud path: redirect to a signed URL ------------------------------------
 
 
