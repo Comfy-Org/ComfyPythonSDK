@@ -47,6 +47,10 @@ class ServerState:
     # If set, GET /assets/{id}/content responds 302 to this URL instead of
     # serving bytes directly (simulates a signed-URL redirect to another host).
     redirect_content_to: str | None = None
+    # Outputs a succeeded job reports; None means the single default `_OUTPUT`.
+    # Set to a list of output dicts (see `_output_json`) to test a job with
+    # multiple outputs, each backed by a distinct asset id.
+    job_outputs: list[dict] | None = None
 
     # --- counters the tests assert on ---
     upload_count: int = 0
@@ -68,6 +72,7 @@ class ServerState:
     # Authorization header seen on the most recent request (any method).
     # `None` before any request; `""` if a request arrived without one.
     last_auth_header: str | None = None
+    last_user_agent: str | None = None
 
 
 def _asset_json(asset_id: str, hash_: str, created_new: bool, size: int) -> dict:
@@ -105,17 +110,21 @@ def _job_json(job_id: str, status: str, outputs: list[dict] | None = None) -> di
     }
 
 
-_OUTPUT = {
-    "node_id": "13",
-    "name": "out.png",
-    "type": "image",
-    "content_type": "image/png",
-    "size_bytes": 33,
-    "id": "asset_out_01",
-    "hash": None,
-    "url": "http://example.invalid/out",
-    "url_expires_at": "2026-07-10T19:20:00Z",
-}
+def _output_json(node_id: str, asset_id: str) -> dict:
+    return {
+        "node_id": node_id,
+        "name": f"{asset_id}.png",
+        "type": "image",
+        "content_type": "image/png",
+        "size_bytes": 33,
+        "id": asset_id,
+        "hash": None,
+        "url": "http://example.invalid/out",
+        "url_expires_at": "2026-07-10T19:20:00Z",
+    }
+
+
+_OUTPUT = _output_json("13", "asset_out_01")
 
 
 def _make_handler(state: ServerState):
@@ -142,6 +151,7 @@ def _make_handler(state: ServerState):
             # required) so a test can assert the bearer token was — or was
             # not — attached to a given request.
             state.last_auth_header = self.headers.get("Authorization", "")
+            state.last_user_agent = self.headers.get("User-Agent", "")
             if not state.require_auth:
                 return True
             return bool(state.last_auth_header)
@@ -220,7 +230,10 @@ def _make_handler(state: ServerState):
             state.job_poll_count += 1
             if state.job_poll_count >= state.polls_to_succeed:
                 status = state.terminal_status
-                outputs = [_OUTPUT] if status == "succeeded" else []
+                if status == "succeeded":
+                    outputs = state.job_outputs if state.job_outputs is not None else [_OUTPUT]
+                else:
+                    outputs = []
             else:
                 status = "running"
                 outputs = []
