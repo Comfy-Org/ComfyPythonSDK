@@ -8,7 +8,7 @@ deployment — only the base URL and an optional API key change.
 from comfy_sdk import Comfy
 
 client = Comfy("http://127.0.0.1:8189")                          # self-hosted, no key
-# client = Comfy("https://api.comfy.org", api_key="ck_...")        # Comfy Cloud
+# client = Comfy("https://api.comfy.org", api_key="comfyui-...")   # Comfy Cloud
 
 wf = client.workflows.from_file("workflow_api.json")
 
@@ -57,8 +57,8 @@ needs the optional `pil` extra: `pip install -e ".[pil]"`.
 | Serverless deployment | `https://<deployment>.comfy.org` | Required |
 
 ```python
-client = Comfy("http://127.0.0.1:8189")                       # self-hosted
-client = Comfy("https://api.comfy.org", api_key="ck_...")     # Comfy Cloud / serverless
+client = Comfy("http://127.0.0.1:8189")                        # self-hosted
+client = Comfy("https://api.comfy.org", api_key="comfyui-...")  # Comfy Cloud / serverless
 ```
 
 `AsyncComfy` takes the same two arguments. A key is only ever attached to
@@ -72,7 +72,7 @@ analytics) — this is request metadata only; no other data is collected. Pass
 attribute its own traffic:
 
 ```python
-client = Comfy("https://api.comfy.org", api_key="ck_...", client_info="my-app")
+client = Comfy("https://api.comfy.org", api_key="comfyui-...", client_info="my-app")
 ```
 
 ## Partner (API) node auth
@@ -139,6 +139,33 @@ live UI feedback, and `wait()`/`result()`/`run()` for the definitive answer.
 `job.status` is the current status string; `job.outputs` is the full list of
 output handles regardless of which node produced them (`job.get_outputs(node_id)`
 filters to one node, as in the quickstart above).
+
+## Downloading outputs
+
+A finished job exposes its results as `Output` handles — `job.outputs`, or
+`job.get_outputs(node_id)` to filter to one node. Each output is an asset you
+can pull down whichever way suits the caller:
+
+```python
+out = job.get_outputs("13")[0]
+out.to_file("result.png")                   # stream to disk in chunks
+data = out.to_bytes()                       # buffer into memory
+out.to_file("head.png", range=(0, 1023))    # range-aware: first 1 KiB only
+```
+
+`get_download_url()` hands back a fetchable URL instead of transferring the
+bytes through your process — give it to a browser, a CDN, or another service:
+
+```python
+link = out.get_download_url()               # DownloadUrl(url=..., expires_at=...)
+```
+
+On Comfy Cloud / serverless the URL is a short-lived, **self-authorizing**
+signed storage URL: whoever holds it can read the asset until `expires_at`
+with no API key of their own. On a self-hosted proxy it's the content endpoint
+(normal auth still applies) and `expires_at` is `None`. It works on every
+backend and never downloads the bytes first. (`AsyncOutput` mirrors all of the
+above with `await`.)
 
 ## Sync and async
 
