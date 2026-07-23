@@ -126,7 +126,8 @@ def test_image_edit_by_name(client: Comfy, input_asset, tmp_path) -> None:
     assert data, "downloaded output is empty"
     if not WORKFLOW_FILE:
         assert data[:8] == b"\x89PNG\r\n\x1a\n"
-        assert len(data) > 10_000
+        width, height = struct.unpack(">II", data[16:24])
+        assert (width, height) == (512, 512)
 
 
 @pytest.mark.xfail(
