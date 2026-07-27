@@ -100,14 +100,18 @@ class _Prepared:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self._base_origin = _origin(self.base_url)
+        parts = urlsplit(self.base_url)
+        self._origin_url = f"{parts.scheme}://{parts.netloc}"
         self._user_agent = _build_user_agent(client_info)
 
     def url(self, path: str) -> str:
-        # A path may be an absolute follow-up link (job.urls.*) or an API path.
+        # A server link (job.urls.*, marked by containing /api/) already carries
+        # the server's mount prefix, so it resolves against the origin — joining
+        # it to base_url would double the prefix on a prefix-mounted surface.
         if path.startswith("http"):
             return path
-        if path.startswith("/api/"):
-            return self.base_url + path
+        if path.startswith("/") and "/api/" in path:
+            return self._origin_url + path
         return self.base_url + _API + path
 
     def headers(self, url: str, extra: dict[str, str] | None = None) -> dict[str, str]:
