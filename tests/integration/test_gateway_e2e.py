@@ -55,12 +55,7 @@ def _gradient_png(width: int = 512, height: int = 512) -> bytes:
         )
 
     raw = b"".join(
-        b"\x00"
-        + bytes(
-            v
-            for x in range(width)
-            for v in (x * 255 // width, y * 255 // height, 128)
-        )
+        b"\x00" + bytes(v for x in range(width) for v in (x * 255 // width, y * 255 // height, 128))
         for y in range(height)
     )
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
