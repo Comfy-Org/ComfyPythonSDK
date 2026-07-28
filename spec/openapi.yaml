@@ -13,7 +13,7 @@ info:
 servers:
 - url: http://127.0.0.1:8189
   description: Self-hosted (comfy-api-proxy)
-- url: https://api.comfy.org
+- url: https://cloud.comfy.org
   description: Comfy Cloud
 - url: https://{deployment}.comfy.org
   description: Serverless deployment (URL shape not final)
@@ -394,7 +394,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '429':
-          description: '`queue_full` — bounded queue depth reached.'
+          description: '`queue_full` (bounded queue depth reached) or, on deployment-scoped surfaces, `deployment_not_ready` (deployment still provisioning/starting). Disambiguate by `error.code`; both mean back off and retry after `Retry-After`.'
           headers:
             Retry-After:
               $ref: '#/components/headers/RetryAfter'
@@ -755,7 +755,7 @@ components:
         '
     JobUrls:
       type: object
-      description: Embedded follow-up links — follow these, don't build URLs.
+      description: Embedded follow-up links — follow these, don't build URLs. A link is either an absolute URL or a host-relative reference (leading `/`) that already includes any prefix the serving surface is mounted under (e.g. a serverless gateway's `/deployment/{deployment_id}/api/v2`). Clients MUST resolve a host-relative link against the request origin (scheme + authority), never against a configured base URL — joining it to a base URL that carries the same mount prefix duplicates the prefix.
       required:
       - self
       - events
@@ -898,6 +898,18 @@ components:
         `queue_full` (429 + Retry-After), `insufficient_credits` (402),
 
         `not_found` (404), `unauthorized` (401), `forbidden` (403).
+
+        Deployment-scoped surfaces add: `deployment_not_ready` (429 +
+
+        Retry-After — the deployment can still reach ready; retry) and
+
+        `deployment_stopped` (422 — terminal deployment state; a retry
+
+        cannot succeed without operator action). A 429 is disambiguated
+
+        by `error.code` alone; clients should treat any 429 + Retry-After
+
+        as "back off and retry".
 
         '
       required:
