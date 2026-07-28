@@ -13,7 +13,7 @@ info:
 servers:
 - url: http://127.0.0.1:8189
   description: Self-hosted (comfy-api-proxy)
-- url: https://api.comfy.org
+- url: https://cloud.comfy.org
   description: Comfy Cloud
 - url: https://{deployment}.comfy.org
   description: Serverless deployment (URL shape not final)

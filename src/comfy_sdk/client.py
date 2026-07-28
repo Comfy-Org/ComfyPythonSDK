@@ -30,6 +30,10 @@ from .workflows import Workflow, WorkflowFactory
 
 # How long to keep retrying a full queue before giving up (seconds).
 _QUEUE_RETRY_BUDGET = 60.0
+#: Base URL of the hosted Comfy Cloud deployment, used when none is given.
+#: Self-hosted ComfyUI and serverless deployments must pass their own base_url.
+COMFY_CLOUD_BASE_URL = "https://cloud.comfy.org"
+
 _DEFAULT_RETRY_AFTER = 2
 
 
@@ -48,7 +52,7 @@ class Comfy:
 
     def __init__(
         self,
-        base_url: str,
+        base_url: str = COMFY_CLOUD_BASE_URL,
         api_key: str | None = None,
         *,
         timeout: float | None = 30.0,
@@ -143,7 +147,7 @@ class AsyncComfy:
 
     def __init__(
         self,
-        base_url: str,
+        base_url: str = COMFY_CLOUD_BASE_URL,
         api_key: str | None = None,
         *,
         timeout: float | None = 30.0,
