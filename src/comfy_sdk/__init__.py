@@ -13,7 +13,7 @@ Quickstart::
     from comfy_sdk import Comfy
 
     client = Comfy("http://127.0.0.1:8189")            # self-hosted, no key
-    # client = Comfy("https://cloud.comfy.org", api_key="comfyui-...")
+    # client = Comfy(api_key="comfyui-...")             # Comfy Cloud (default)
 
     wf = client.workflows.from_file("workflow_api.json")
     asset = client.assets.from_file("photo.png")       # lazy; uploaded on use
@@ -26,7 +26,7 @@ Quickstart::
 from __future__ import annotations
 
 from .assets import Asset, AssetFactory, AsyncAsset, AsyncAssetFactory
-from .client import AsyncComfy, Comfy
+from .client import COMFY_CLOUD_BASE_URL, AsyncComfy, Comfy
 from .events import (
     Event,
     Log,
@@ -59,6 +59,7 @@ __version__ = "0.1.0"
 __all__ = [
     # clients
     "Comfy",
+    "COMFY_CLOUD_BASE_URL",
     "AsyncComfy",
     # assets / workflows / jobs / outputs
     "Asset",

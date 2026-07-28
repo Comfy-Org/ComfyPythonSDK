@@ -53,12 +53,13 @@ needs the optional `pil` extra: `pip install -e ".[pil]"`.
 | Surface | Example base URL | `api_key` |
 |---|---|---|
 | Self-hosted ComfyUI (behind the API proxy) | `http://127.0.0.1:8189` | Omit — no key is sent, even implicitly |
-| Comfy Cloud | `https://cloud.comfy.org` | Required |
+| Comfy Cloud | `https://cloud.comfy.org` — the default, may be omitted | Required |
 | Serverless deployment | `https://<deployment>.comfy.org` | Required |
 
 ```python
-client = Comfy("http://127.0.0.1:8189")                        # self-hosted
-client = Comfy("https://cloud.comfy.org", api_key="comfyui-...")  # Comfy Cloud / serverless
+client = Comfy(api_key="comfyui-...")                             # Comfy Cloud (default)
+client = Comfy("http://127.0.0.1:8189")                           # self-hosted
+client = Comfy("https://<deployment>.comfy.org", api_key="comfyui-...")  # serverless
 ```
 
 `AsyncComfy` takes the same two arguments. A key is only ever attached to
@@ -72,7 +73,7 @@ analytics) — this is request metadata only; no other data is collected. Pass
 attribute its own traffic:
 
 ```python
-client = Comfy("https://cloud.comfy.org", api_key="comfyui-...", client_info="my-app")
+client = Comfy(api_key="comfyui-...", client_info="my-app")
 ```
 
 ## Partner (API) node auth
