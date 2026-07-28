@@ -8,7 +8,7 @@ deployment — only the base URL and an optional API key change.
 from comfy_sdk import Comfy
 
 client = Comfy("http://127.0.0.1:8189")                          # self-hosted, no key
-# client = Comfy("https://api.comfy.org", api_key="comfyui-...")   # Comfy Cloud
+# client = Comfy("https://cloud.comfy.org", api_key="comfyui-...")   # Comfy Cloud
 
 wf = client.workflows.from_file("workflow_api.json")
 
@@ -53,12 +53,12 @@ needs the optional `pil` extra: `pip install -e ".[pil]"`.
 | Surface | Example base URL | `api_key` |
 |---|---|---|
 | Self-hosted ComfyUI (behind the API proxy) | `http://127.0.0.1:8189` | Omit — no key is sent, even implicitly |
-| Comfy Cloud | `https://api.comfy.org` | Required |
+| Comfy Cloud | `https://cloud.comfy.org` | Required |
 | Serverless deployment | `https://<deployment>.comfy.org` | Required |
 
 ```python
 client = Comfy("http://127.0.0.1:8189")                        # self-hosted
-client = Comfy("https://api.comfy.org", api_key="comfyui-...")  # Comfy Cloud / serverless
+client = Comfy("https://cloud.comfy.org", api_key="comfyui-...")  # Comfy Cloud / serverless
 ```
 
 `AsyncComfy` takes the same two arguments. A key is only ever attached to
@@ -72,7 +72,7 @@ analytics) — this is request metadata only; no other data is collected. Pass
 attribute its own traffic:
 
 ```python
-client = Comfy("https://api.comfy.org", api_key="comfyui-...", client_info="my-app")
+client = Comfy("https://cloud.comfy.org", api_key="comfyui-...", client_info="my-app")
 ```
 
 ## Partner (API) node auth

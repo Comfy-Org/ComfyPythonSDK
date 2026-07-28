@@ -13,7 +13,7 @@ from __future__ import annotations
 from comfy_low.transport import _Prepared
 
 GATEWAY_BASE = "https://stagingplatformapi.comfy.org/deployment/dep_123"
-CLOUD_BASE = "https://api.comfy.org"
+CLOUD_BASE = "https://cloud.comfy.org"
 
 
 def test_gateway_self_link_resolves_against_origin() -> None:

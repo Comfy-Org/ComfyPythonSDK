@@ -13,7 +13,7 @@ Quickstart::
     from comfy_sdk import Comfy
 
     client = Comfy("http://127.0.0.1:8189")            # self-hosted, no key
-    # client = Comfy("https://api.comfy.org", api_key="comfyui-...")
+    # client = Comfy("https://cloud.comfy.org", api_key="comfyui-...")
 
     wf = client.workflows.from_file("workflow_api.json")
     asset = client.assets.from_file("photo.png")       # lazy; uploaded on use

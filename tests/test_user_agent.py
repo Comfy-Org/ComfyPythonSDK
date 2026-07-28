@@ -38,4 +38,4 @@ def test_client_info_rejects_crlf() -> None:
     # A CR/LF in the caller token must never reach the header (no injection).
     for bad in ("evil\r\nX-Injected: 1", "line\nbreak", "carriage\rreturn"):
         with pytest.raises(ValueError):
-            Comfy("https://api.comfy.org", client_info=bad)
+            Comfy("https://cloud.comfy.org", client_info=bad)
