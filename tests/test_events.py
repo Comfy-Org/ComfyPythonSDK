@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
-from comfy_low.errors import ApiError
 from comfy_sdk import AsyncComfy, Comfy, OutputReady, Progress, StatusChange
 
 
@@ -68,28 +65,29 @@ def test_events_polls_to_terminal_when_stream_ends_without_terminal(server) -> N
     assert seen[-1].status == "succeeded"
 
 
-def test_events_raise_when_events_endpoint_not_implemented(server) -> None:
-    """Pins today's behavior on a surface without SSE: the contract-legal 501
-    from the events endpoint surfaces as the protocol-level ``ApiError``."""
+def test_events_end_silently_when_events_endpoint_not_implemented(server) -> None:
+    """Graceful degradation on a surface without SSE: a 501 from the events
+    endpoint (contract-legal) ends the iteration with no events, and the
+    poll-authoritative ``wait`` stays fully functional. Before this behavior
+    was introduced, ``events()`` raised the protocol-level ``ApiError``
+    (code ``not_implemented``, http_status 501)."""
     server.state.events_not_implemented = True
     with Comfy(server.base_url) as client:
         job = client.submit(_wf(client))
-        with pytest.raises(ApiError) as exc_info:
-            list(job.events())
+        assert list(job.events()) == []
+        assert job.wait().status == "succeeded"
 
-    assert exc_info.value.http_status == 501
-    assert exc_info.value.code == "not_implemented"
+    assert server.state.events_connect_count == 1  # no reconnect loop on 501
 
 
-async def test_async_events_raise_when_events_endpoint_not_implemented(server) -> None:
+async def test_async_events_end_silently_when_events_endpoint_not_implemented(server) -> None:
     server.state.events_not_implemented = True
     async with AsyncComfy(server.base_url) as client:
         job = await client.submit(_wf(client))
-        with pytest.raises(ApiError) as exc_info:
-            _ = [e async for e in job.events()]
+        assert [e async for e in job.events()] == []
+        assert (await job.wait()).status == "succeeded"
 
-    assert exc_info.value.http_status == 501
-    assert exc_info.value.code == "not_implemented"
+    assert server.state.events_connect_count == 1
 
 
 def test_preview_event_decodes_base64(server) -> None:

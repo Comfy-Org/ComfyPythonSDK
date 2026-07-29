@@ -16,6 +16,7 @@ from typing import Any
 
 import httpx
 
+from comfy_low.errors import ApiError
 from comfy_low.models import Job as LowJob
 from comfy_low.models import Output as LowOutput
 from comfy_low.transport import AsyncComfyLow, ComfyLow
@@ -94,6 +95,10 @@ class Job:
     def events(self) -> Iterator[Event]:
         """Typed live event iterator. Auto-reconnects with no replay; falls back
         to polling to detect terminal status if the stream ends early.
+
+        A surface without SSE (501 from the events endpoint — contract-legal)
+        ends the iteration silently: streaming is an enhancement over the
+        poll-authoritative ``wait``/``result``, never a requirement.
         """
         events_url = self._model.urls.events or self._model.id
         while True:
@@ -108,6 +113,10 @@ class Job:
                         yield ev
                         return
                     yield ev
+            except ApiError as exc:
+                if exc.http_status == 501:
+                    return  # surface has no SSE — poll paths remain authoritative
+                raise
             except (httpx.HTTPError, httpx.StreamError):
                 pass  # connection dropped mid-stream — reconnect below
             if terminal_seen:
@@ -200,6 +209,10 @@ class AsyncJob:
                         yield ev
                         return
                     yield ev
+            except ApiError as exc:
+                if exc.http_status == 501:
+                    return  # surface has no SSE — poll paths remain authoritative
+                raise
             except (httpx.HTTPError, httpx.StreamError):
                 pass
             if terminal_seen:
