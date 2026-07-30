@@ -75,7 +75,7 @@ INTERNAL_MARKER_RES = [
 # purpose -- the point of default-deny is that we never need to.)
 PUBLIC_COMFY_ORG_REPOS = {
     "comfy-api-proxy",
-    "comfy-cla"
+    "comfy-cla",
     "comfy-cli",
     "comfy-cloud-mcp-server",
     "Comfy-Desktop",
