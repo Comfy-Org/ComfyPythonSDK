@@ -37,6 +37,21 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/comfy_sdk", "src/comfy_low"]
 
+# Without an explicit list hatchling sweeps in everything git doesn't ignore,
+# which put local dev droppings (a stale .coverage database) and repo-only
+# config (.github/, .coderabbit.yaml, uv.lock) into the published sdist. Keep
+# it to what's needed to build and run the tests from a tarball.
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "scripts/",
+    "spec/",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
