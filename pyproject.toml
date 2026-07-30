@@ -48,6 +48,9 @@ dev = [
     "mypy~=2.3.0",
     "pytest~=9.1.1",
     "pytest-asyncio~=1.4.0",
+    # A .coverage database was already being produced locally (and committed)
+    # without the tool that makes it reproducible being declared anywhere.
+    "pytest-cov~=7.0",
     "datamodel-code-generator~=0.68.1",
     "Pillow>=10",
     "PyYAML>=6",
@@ -79,6 +82,33 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 exclude = ['src/comfy_low/models/_generated\.py']
 
+# comfy_sdk is the hand-written public surface and ships py.typed, so every
+# def in it should be annotated. Left off globally because comfy_low wraps
+# generated code where the guarantee isn't ours to make.
+[[tool.mypy.overrides]]
+module = "comfy_sdk.*"
+disallow_untyped_defs = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = ["--strict-markers", "--strict-config"]
+# Deprecations from httpx/pydantic/pytest-asyncio are the ones worth failing
+# on: they are the advance warning before a dependency bump breaks the SDK.
+# Deliberately not a blanket "error" -- the tests' own local HTTP servers emit
+# ResourceWarning on teardown, which would turn 63 passing tests red without
+# saying anything about the SDK.
+filterwarnings = [
+    "error::DeprecationWarning",
+    "error::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src/comfy_sdk", "src/comfy_low"]
+branch = true
+
+[tool.coverage.report]
+# The generated models are datamodel-code-generator output, not hand-written
+# code under test, and TYPE_CHECKING blocks never execute at runtime.
+omit = ["src/comfy_low/models/_generated.py"]
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
