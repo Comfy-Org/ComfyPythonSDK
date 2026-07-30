@@ -25,6 +25,9 @@ Quickstart::
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 from .assets import Asset, AssetFactory, AsyncAsset, AsyncAssetFactory
 from .client import COMFY_CLOUD_BASE_URL, AsyncComfy, Comfy
 from .events import (
@@ -54,7 +57,13 @@ from .jobs import AsyncJob, Job
 from .outputs import AsyncOutput, DownloadUrl, Output
 from .workflows import Workflow, WorkflowFactory
 
-__version__ = "0.1.0"
+try:
+    # Single source of truth is the installed distribution metadata, which
+    # publish.yml stamps from the release tag. Hardcoding it here would pin
+    # __version__ to the pyproject placeholder on every published release.
+    __version__ = _pkg_version("comfy-sdk")
+except PackageNotFoundError:  # running from a source tree, not installed
+    __version__ = "0+unknown"
 
 __all__ = [
     # clients
