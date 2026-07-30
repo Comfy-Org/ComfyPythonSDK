@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from comfy_sdk import Comfy, OutputReady, Progress, StatusChange
+from comfy_sdk import AsyncComfy, Comfy, OutputReady, Progress, StatusChange
 
 
 def _wf(client: Comfy):
@@ -47,6 +47,47 @@ def test_sse_reconnect_with_no_replay(server) -> None:
     # by a cursor-based resume. The 2nd connection sends its own fresh progress.
     progresses = [e for e in seen if isinstance(e, Progress)]
     assert len(progresses) == 2  # one per connection, not a replayed backlog
+
+
+def test_events_polls_to_terminal_when_stream_ends_without_terminal(server) -> None:
+    # The stream closes cleanly (no error) after one progress frame, without a
+    # terminal status. The documented backstop: poll the authoritative state —
+    # it already reports succeeded, so events() ends on a synthetic terminal
+    # StatusChange instead of reconnecting.
+    server.state.sse_mode = "reconnect"  # 1st connection: one progress frame, clean close
+    server.state.polls_to_succeed = 1
+    with Comfy(server.base_url) as client:
+        job = client.submit(_wf(client))
+        seen = list(job.events())
+
+    assert server.state.events_connect_count == 1  # backstop polled; no reconnect
+    assert isinstance(seen[-1], StatusChange)
+    assert seen[-1].status == "succeeded"
+
+
+def test_events_end_silently_when_events_endpoint_not_implemented(server) -> None:
+    """Graceful degradation on a surface without SSE: a 501 from the events
+    endpoint (contract-legal) ends the iteration with no events, and the
+    poll-authoritative ``wait`` stays fully functional. Before this behavior
+    was introduced, ``events()`` raised the protocol-level ``ApiError``
+    (code ``not_implemented``, http_status 501)."""
+    server.state.events_not_implemented = True
+    with Comfy(server.base_url) as client:
+        job = client.submit(_wf(client))
+        assert list(job.events()) == []
+        assert job.wait().status == "succeeded"
+
+    assert server.state.events_connect_count == 1  # no reconnect loop on 501
+
+
+async def test_async_events_end_silently_when_events_endpoint_not_implemented(server) -> None:
+    server.state.events_not_implemented = True
+    async with AsyncComfy(server.base_url) as client:
+        job = await client.submit(_wf(client))
+        assert [e async for e in job.events()] == []
+        assert (await job.wait()).status == "succeeded"
+
+    assert server.state.events_connect_count == 1
 
 
 def test_preview_event_decodes_base64(server) -> None:

@@ -24,18 +24,23 @@ from __future__ import annotations
 import json
 import os
 import struct
+import threading
+import time
 import zlib
 from pathlib import Path
 
 import pytest
 
-from comfy_sdk import Comfy
+from comfy_sdk import Comfy, OutputReady, StatusChange
+from comfy_sdk.events import Event
 
 BASE_URL = os.environ.get("COMFY_BASE_URL")
 API_KEY = os.environ.get("COMFY_API_KEY")
 INPUT_NAME = "sdk_e2e_input.png"
 WORKFLOW_FILE = os.environ.get("COMFY_WORKFLOW_FILE")
 JOB_TIMEOUT_S = 600  # cold start on a scale-to-zero deployment takes minutes
+STREAM_CAP_S = 120  # hard wall-clock cap on stream consumption (never hang CI)
+FIRST_FRAME_S = 30  # generous bound on connect-to-first-snapshot (~0.4s live)
 
 pytestmark = pytest.mark.skipif(
     not (BASE_URL and API_KEY),
@@ -123,6 +128,61 @@ def test_image_edit_by_name(client: Comfy, input_asset, tmp_path) -> None:
         assert data[:8] == b"\x89PNG\r\n\x1a\n"
         width, height = struct.unpack(">II", data[16:24])
         assert (width, height) == (512, 512)
+
+
+def test_stream_delivers_lifecycle(client: Comfy, input_asset) -> None:
+    """SSE conformance: ``job.events()`` delivers the v1 lifecycle live.
+
+    The gateway's v1 stream emits ``status`` (snapshot on connect, then on
+    change) and ``output`` frames. Asserted contract: a StatusChange snapshot
+    arrives promptly after connect, an OutputReady arrives before the terminal
+    frame, iteration ends on its own at a terminal StatusChange, and the
+    poll-authoritative state agrees. Duplicate frames are legal (snapshot
+    semantics), so counts are never asserted — only presence and order.
+
+    Runs after the plain submit-and-poll test, so the deployment is warm and
+    only the connect-to-first-frame gap (served by the gateway itself, not the
+    worker) is asserted tight.
+    """
+    graph, _ = _edit_workflow(INPUT_NAME)
+    job = client.submit(client.workflows.from_json(graph))
+
+    arrivals: list[tuple[float, Event]] = []
+    errors: list[BaseException] = []
+    t0 = time.monotonic()
+
+    def consume() -> None:
+        try:
+            for ev in job.events():
+                arrivals.append((time.monotonic() - t0, ev))
+        except BaseException as exc:  # surfaced in the main thread below
+            errors.append(exc)
+
+    # Daemon-thread watchdog: a wedged stream fails the test instead of
+    # hanging CI, and the abandoned thread cannot block interpreter exit.
+    consumer = threading.Thread(target=consume, daemon=True)
+    consumer.start()
+    consumer.join(timeout=STREAM_CAP_S)
+    kinds = [type(e).__name__ for _, e in arrivals]
+    assert not consumer.is_alive(), (
+        f"events() did not end on its own within {STREAM_CAP_S}s; frames so far: {kinds}"
+    )
+    if errors:
+        raise errors[0]
+
+    events = [e for _, e in arrivals]
+    status_arrivals = [(gap, e) for gap, e in arrivals if isinstance(e, StatusChange)]
+    assert status_arrivals, f"no StatusChange frames: {kinds}"
+    first_gap = status_arrivals[0][0]
+    assert first_gap < FIRST_FRAME_S, f"snapshot status took {first_gap:.1f}s to arrive"
+
+    assert isinstance(events[-1], StatusChange), f"stream did not end on a status frame: {kinds}"
+    assert events[-1].status == "succeeded", f"terminal status {events[-1].status}: {kinds}"
+    assert any(isinstance(e, OutputReady) for e in events[:-1]), (
+        f"no OutputReady before the terminal frame: {kinds}"
+    )
+
+    assert job.refresh().status == "succeeded"
 
 
 @pytest.mark.xfail(

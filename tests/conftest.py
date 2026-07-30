@@ -44,6 +44,8 @@ class ServerState:
     # (a "zombie": no terminal, no close) for `stall_seconds`.
     sse_mode: str = "normal"
     stall_seconds: float = 2.0
+    # GET /jobs/{id}/events answers 501 not_implemented — a surface without SSE.
+    events_not_implemented: bool = False
     # If set, GET /assets/{id}/content responds 302 to this URL instead of
     # serving bytes directly (simulates a signed-URL redirect to another host).
     redirect_content_to: str | None = None
@@ -241,6 +243,9 @@ def _make_handler(state: ServerState):
 
         def _serve_events(self, job_id: str) -> None:
             state.events_connect_count += 1
+            if state.events_not_implemented:
+                self._err(501, "not_implemented", "SSE is not supported on this surface")
+                return
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
