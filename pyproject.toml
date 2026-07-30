@@ -32,8 +32,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://docs.comfy.org"
 Documentation = "https://docs.comfy.org"
-Repository = "https://github.com/Comfy-Org/ComfyPythonSDK"
-Issues = "https://github.com/Comfy-Org/ComfyPythonSDK/issues"
+Repository = "https://github.com/Comfy-Org/comfy-python-sdk"
+Issues = "https://github.com/Comfy-Org/comfy-python-sdk/issues"
 
 [project.optional-dependencies]
 # Preview.to_pil() decodes in-progress preview frames to PIL images.
