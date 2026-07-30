@@ -53,6 +53,12 @@ class Job:
         return self._model.error
 
     def get_outputs(self, node_id: str) -> list[Output]:
+        """The outputs produced by one node, in server order.
+
+        Reads the state already on this handle — it does not re-fetch, so call
+        :meth:`result` or :meth:`wait` first. An unknown ``node_id``, or a node
+        that produced nothing, gives an empty list rather than raising.
+        """
         return [Output(o, self._low) for o in self._model.outputs if o.node_id == node_id]
 
     def _bind_output(self, model: LowOutput) -> Output:
@@ -60,6 +66,11 @@ class Job:
 
     # -- polling (authoritative) -----------------------------------------
     def refresh(self) -> Job:
+        """Re-fetch authoritative job state once, in place, and return ``self``.
+
+        This is the source of truth that live events are reconciled against;
+        one call, no waiting. Use :meth:`wait` to poll until terminal.
+        """
         with translating():
             self._model = self._low.get_job(self._model.urls.self or self._model.id)
         return self
@@ -86,6 +97,12 @@ class Job:
         return self
 
     def cancel(self) -> Job:
+        """Request cancellation, updating this handle with the returned state.
+
+        Returns ``self``. Cancellation is a request, not a guarantee: a job that
+        already reached a terminal state stays in it, so check :attr:`status`
+        rather than assuming the job stopped.
+        """
         with translating():
             self._model = self._low.cancel_job(self._model.urls.cancel or self._model.id)
         return self
@@ -148,17 +165,22 @@ class AsyncJob:
         return self._model.error
 
     def get_outputs(self, node_id: str) -> list[AsyncOutput]:
+        """:meth:`Job.get_outputs`, bound to async outputs. Not a coroutine —
+        it reads state already on the handle, so no ``await``.
+        """
         return [AsyncOutput(o, self._low) for o in self._model.outputs if o.node_id == node_id]
 
     def _bind_output(self, model: LowOutput) -> AsyncOutput:
         return AsyncOutput(model, self._low)
 
     async def refresh(self) -> AsyncJob:
+        """Async :meth:`Job.refresh` — one authoritative re-fetch, in place."""
         with translating():
             self._model = await self._low.get_job(self._model.urls.self or self._model.id)
         return self
 
     async def wait(self, timeout: float | None = None) -> AsyncJob:
+        """Async :meth:`Job.wait` — poll to terminal. Raises ``TimeoutError``."""
         import asyncio
 
         deadline = None if timeout is None else time.monotonic() + timeout
@@ -174,17 +196,22 @@ class AsyncJob:
             await asyncio.sleep(next(backoff))
 
     async def result(self) -> AsyncJob:
+        """Async :meth:`Job.result` — wait, then raise ``JobFailed`` unless it succeeded."""
         await self.wait()
         if self.status != _core.SUCCESS:
             raise JobFailed(f"job {self.id} ended {self.status}", error=self._model.error)
         return self
 
     async def cancel(self) -> AsyncJob:
+        """Async :meth:`Job.cancel` — a request, not a guarantee; check :attr:`status`."""
         with translating():
             self._model = await self._low.cancel_job(self._model.urls.cancel or self._model.id)
         return self
 
     async def events(self) -> AsyncIterator[Event]:
+        """Async :meth:`Job.events` — typed live stream, auto-reconnecting with
+        no replay and the poll path as its backstop.
+        """
         import asyncio
 
         events_url = self._model.urls.events or self._model.id

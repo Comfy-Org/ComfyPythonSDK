@@ -64,6 +64,12 @@ class Comfy:
         self.jobs = JobFactory(self._low)
 
     def close(self) -> None:
+        """Release the underlying HTTP connection pool.
+
+        Prefer the context-manager form (``with Comfy(...) as client:``), which
+        calls this for you. Job handles created from this client cannot be used
+        afterwards.
+        """
         self._low.close()
 
     def __enter__(self) -> Comfy:
@@ -159,6 +165,7 @@ class AsyncComfy:
         self.jobs = AsyncJobFactory(self._low)
 
     async def aclose(self) -> None:
+        """Async :meth:`Comfy.close`. Prefer ``async with AsyncComfy(...)``."""
         await self._low.aclose()
 
     async def __aenter__(self) -> AsyncComfy:
@@ -208,6 +215,7 @@ class AsyncComfy:
         api_key: str | None = None,
         timeout: float | None = None,
     ) -> AsyncJob:
+        """Async :meth:`Comfy.run` — submit, then poll to terminal. Raises on failure."""
         from ._core import SUCCESS
         from .exceptions import JobFailed
 
