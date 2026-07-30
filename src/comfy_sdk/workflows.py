@@ -15,6 +15,16 @@ from typing import Any
 
 
 class Workflow:
+    """An API-format ComfyUI graph, ready to submit.
+
+    Build one via ``client.workflows`` (:meth:`WorkflowFactory.from_file` or
+    :meth:`WorkflowFactory.from_json`) rather than constructing it directly.
+    This is the API format exported by "Save (API Format)" — not the UI
+    format, which the SDK rejects locally at submit with
+    :class:`WorkflowFormatUi` before any request is made. The raw graph stays
+    available and mutable as :attr:`json`.
+    """
+
     def __init__(self, graph: dict[str, Any]) -> None:
         self.json = graph
 

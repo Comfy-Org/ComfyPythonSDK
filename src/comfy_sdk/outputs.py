@@ -66,6 +66,13 @@ class Output:
         return self._model.content_type
 
     def to_file(self, path: str | PathLike[str], *, range: tuple[int, int] | None = None) -> Path:
+        """Stream this output to ``path`` and return the path written.
+
+        Bytes are written in chunks as they arrive, so an output larger than
+        memory is fine. ``range=(first, last)`` requests only that byte slice,
+        inclusive of both ends, matching HTTP ``Range: bytes=first-last`` —
+        ``range=(0, 4)`` yields the first five bytes.
+        """
         dest = Path(path)
         with self._low.get_asset_content(self._model.id, range=range) as resp:
             with open(dest, "wb") as fh:
@@ -74,6 +81,11 @@ class Output:
         return dest
 
     def to_stream(self, stream: BinaryIO, *, range: tuple[int, int] | None = None) -> int:
+        """Copy this output into an already-open binary ``stream``.
+
+        Returns the number of bytes written. The stream is written to but never
+        closed — that stays the caller's. See :meth:`to_file` for ``range``.
+        """
         written = 0
         with self._low.get_asset_content(self._model.id, range=range) as resp:
             for chunk in resp.iter_bytes(_CHUNK):
@@ -82,6 +94,12 @@ class Output:
         return written
 
     def to_bytes(self, *, range: tuple[int, int] | None = None) -> bytes:
+        """Return this output's bytes in memory.
+
+        Convenient for small outputs; prefer :meth:`to_file` or
+        :meth:`to_stream` for large ones, since this buffers the whole body.
+        See :meth:`to_file` for ``range``.
+        """
         buf = bytearray()
         with self._low.get_asset_content(self._model.id, range=range) as resp:
             for chunk in resp.iter_bytes(_CHUNK):
@@ -139,6 +157,7 @@ class AsyncOutput:
     async def to_file(
         self, path: str | PathLike[str], *, range: tuple[int, int] | None = None
     ) -> Path:
+        """Async :meth:`Output.to_file` — same chunked write and inclusive ``range``."""
         dest = Path(path)
         async with self._low.get_asset_content(self._model.id, range=range) as resp:
             with open(dest, "wb") as fh:
@@ -147,6 +166,7 @@ class AsyncOutput:
         return dest
 
     async def to_bytes(self, *, range: tuple[int, int] | None = None) -> bytes:
+        """Async :meth:`Output.to_bytes` — buffers the whole body in memory."""
         buf = bytearray()
         async with self._low.get_asset_content(self._model.id, range=range) as resp:
             async for chunk in resp.aiter_bytes(_CHUNK):
