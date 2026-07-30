@@ -3,6 +3,8 @@ name = "comfy-sdk"
 version = "0.1.0"
 description = "Python SDK for running ComfyUI workflows via the Comfy API v2 (self-hosted, Comfy Cloud, serverless)."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Comfy Org" }]
 keywords = ["comfyui", "comfy", "sdk", "generative-ai", "diffusion", "workflow"]
