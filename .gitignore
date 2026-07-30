@@ -3,3 +3,9 @@ __pycache__/
 .venv/
 dist/
 *.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
