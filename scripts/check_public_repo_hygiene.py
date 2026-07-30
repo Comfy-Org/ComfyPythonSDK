@@ -76,8 +76,9 @@ INTERNAL_MARKER_RES = [
 PUBLIC_COMFY_ORG_REPOS = {
     "ComfyUI",
     "ComfyUI_frontend",
-    "ComfyPythonSDK",
-    "ComfyTypeScriptSDK",
+    "comfy-python-sdk",
+    "comfy-typescript-sdk",
+    "comfy-swift-sdk",
     "Comfy-Desktop",
     "comfy-cli",
     "comfy-api-proxy",

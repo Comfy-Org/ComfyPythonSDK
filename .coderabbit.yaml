@@ -2,7 +2,7 @@
 language: "en-US"
 early_access: false
 tone_instructions: |
-  This is a public Python SDK (ComfyPythonSDK). CI already runs
+  This is a public Python SDK (comfy-python-sdk). CI already runs
   `ruff check`, `ruff format --check`, and `mypy` on every PR — do not repeat
   their findings or nitpick style/formatting. Focus on public API stability
   (this SDK is consumed by external users, so flag breaking changes to

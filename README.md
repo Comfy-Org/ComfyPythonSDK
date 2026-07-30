@@ -1,4 +1,24 @@
-# comfy-sdk (Python)
+<div align="center">
+
+<img src="assets/logo.svg" alt="Comfy" width="130"/>
+
+<h1>comfy-python-sdk</h1>
+
+<p>
+  <strong>The Python client for the <a href="https://docs.comfy.org">Comfy API v2</a>.</strong><br/>
+  Submit a workflow, stream its progress, get your outputs — against self-hosted ComfyUI, Comfy Cloud, or serverless.
+</p>
+
+</div>
+
+<p align="center">
+  <a href="https://pypi.org/project/comfy-sdk/"><img src="https://img.shields.io/pypi/v/comfy-sdk?style=for-the-badge&logo=pypi&logoColor=white&label=PyPI" alt="PyPI"></a>
+  <a href="#requirements-and-install"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://cloud.comfy.org"><img src="https://img.shields.io/badge/Comfy_Cloud-cloud.comfy.org-211927?style=for-the-badge" alt="Comfy Cloud"></a>
+</p>
+
+---
 
 Python SDK for running ComfyUI workflows via the **Comfy API v2**. The same
 code runs against a self-hosted ComfyUI, Comfy Cloud, or a serverless
@@ -38,8 +58,8 @@ To install from source instead (for local development, or to track an
 unreleased commit):
 
 ```bash
-git clone https://github.com/Comfy-Org/ComfyPythonSDK
-cd ComfyPythonSDK
+git clone https://github.com/Comfy-Org/comfy-python-sdk
+cd comfy-python-sdk
 pip install -e .
 # with everything needed to lint/type-check/test locally:
 pip install -e ".[dev]"
@@ -243,10 +263,17 @@ periodically from that canonical contract, stripped of anything tagged
 
 ## Related projects
 
-Part of the same SDK family: a TypeScript client with the equivalent surface
-for JS/Node integrators, and the local API proxy that fronts a self-hosted
-ComfyUI instance with this same v2 contract (`comfy-api-proxy` in the
-`servers` list of `spec/openapi.yaml`).
+Clients for the same Comfy API v2 contract:
+
+| Project | Language | Package |
+|---|---|---|
+| [comfy-python-sdk](https://github.com/Comfy-Org/comfy-python-sdk) | Python | `comfy-sdk` |
+| [comfy-typescript-sdk](https://github.com/Comfy-Org/comfy-typescript-sdk) | TypeScript | `@comfyorg/sdk` |
+| [comfy-swift-sdk](https://github.com/Comfy-Org/comfy-swift-sdk) | Swift | SwiftPM |
+
+[comfy-api-proxy](https://github.com/Comfy-Org/comfy-api-proxy) fronts a
+self-hosted ComfyUI with this same v2 contract (it is the `comfy-api-proxy`
+entry in the `servers` list of `spec/openapi.yaml`).
 
 ## Development
 
