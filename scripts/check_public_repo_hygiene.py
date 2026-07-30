@@ -74,15 +74,16 @@ INTERNAL_MARKER_RES = [
 # it here once confirmed public. (No private repo names are listed here on
 # purpose -- the point of default-deny is that we never need to.)
 PUBLIC_COMFY_ORG_REPOS = {
-    "ComfyUI",
-    "ComfyUI_frontend",
-    "comfy-python-sdk",
-    "comfy-typescript-sdk",
-    "comfy-swift-sdk",
-    "Comfy-Desktop",
-    "comfy-cli",
     "comfy-api-proxy",
+    "comfy-cla",
+    "comfy-cli",
     "comfy-cloud-mcp-server",
+    "Comfy-Desktop",
+    "comfy-python-sdk",
+    "comfy-swift-sdk",
+    "comfy-typescript-sdk",
+    "ComfyUI_frontend",
+    "ComfyUI",
 }
 # CODEOWNERS team handles (`@Comfy-Org/<team>`) are inherently public on a
 # public repo -- GitHub renders the CODEOWNERS owners to anyone who can see the
