@@ -48,7 +48,7 @@ Install the optional `pil` extra with `pip install -e ".[pil]"` to use `Preview.
 
 The SDK works against a ComfyUI instance with **Comfy API v2**. Comfy Cloud and serverless instances deployed from our developer platform already use Comfy API v2. For local or self-hosted instances, **Comfy API v2** can be setup using the [comfy-api-proxy](https://github.com/Comfy-Org/comfy-api-proxy).
 
-## Getting Started
+## Getting started
 
 ```python
 from comfy_sdk import Comfy
