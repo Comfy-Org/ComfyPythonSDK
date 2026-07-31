@@ -1,14 +1,10 @@
 <div align="center">
-
 <img src="assets/logo.svg" alt="Comfy" width="130"/>
-
 <h1>comfy-python-sdk</h1>
-
 <p>
   <strong>The Python client for the <a href="https://docs.comfy.org">Comfy API v2</a>.</strong><br/>
   Submit a workflow, stream its progress, get your outputs — against self-hosted ComfyUI, Comfy Cloud, or serverless.
 </p>
-
 </div>
 
 <p align="center">
@@ -21,26 +17,8 @@
 ---
 
 Python SDK for running ComfyUI workflows via the **Comfy API v2**. The same
-code runs against a self-hosted ComfyUI, Comfy Cloud, or a serverless
+code runs against a self-hosted ComfyUI instance, Comfy Cloud, or a serverless
 deployment — only the base URL and an optional API key change.
-
-```python
-from comfy_sdk import Comfy
-
-client = Comfy("http://127.0.0.1:8189")                          # self-hosted, no key
-# client = Comfy("https://cloud.comfy.org", api_key="comfyui-...")   # Comfy Cloud
-
-wf = client.workflows.from_file("workflow_api.json")
-
-# Lazy asset handle: hashed locally with blake3, deduped against the server's
-# fast-path (mint over existing bytes), or streamed-uploaded on a miss — then
-# substituted into the graph as a core/ASSET reference.
-asset = client.assets.from_file("photo.png")
-wf.set_input("10", "image", asset)
-
-job = client.run(wf)                 # submit, then poll to a terminal state
-job.get_outputs("13")[0].to_file("out.png")
-```
 
 ## Requirements and install
 
@@ -50,10 +28,6 @@ Requires **Python 3.10+**. Dependencies: `httpx`, `blake3`, `pydantic` (v2).
 pip install comfy-sdk
 ```
 
-Releases are published to PyPI from a GitHub Release (tag `vX.Y.Z`) by
-[`.github/workflows/publish.yml`](.github/workflows/publish.yml), using
-PyPI's Trusted Publishing (OIDC) — no API token is stored in this repo.
-
 To install from source instead (for local development, or to track an
 unreleased commit):
 
@@ -61,12 +35,41 @@ unreleased commit):
 git clone https://github.com/Comfy-Org/comfy-python-sdk
 cd comfy-python-sdk
 pip install -e .
-# with everything needed to lint/type-check/test locally:
+
+# To install everything needed to lint/type-check/test locally
 pip install -e ".[dev]"
 ```
 
-`Preview.to_pil()` (decoding an in-progress SSE preview frame to a `PIL.Image`)
-needs the optional `pil` extra: `pip install -e ".[pil]"`.
+### Optional dependencies
+
+Install the optional `pil` extra with `pip install -e ".[pil]"` to use `Preview.to_pil()` for decoding an in-progress output preview to a `PIL.Image`.
+
+### For local
+
+The SDK works against a ComfyUI instance with **Comfy API v2**. Comfy Cloud and serverless instances deployed from our developer platform already use Comfy API v2. For local or self-hosted instances, **Comfy API v2** can be setup using the [comfy-api-proxy](https://github.com/Comfy-Org/comfy-api-proxy).
+
+## Getting Started
+
+```python
+from comfy_sdk import Comfy
+
+client = Comfy("http://127.0.0.1:8189")                              # Self-hosted, no API key
+# client = Comfy("https://cloud.comfy.org", api_key="comfyui-...")   # Comfy Cloud
+
+wf = client.workflows.from_file("workflow_api.json")
+
+# Input assets are hashed locally with blake3
+# If the server already has an identical copy we reuse it, if not we upload the asset
+# The workflow is updated with the core/ASSET reference instead of a local file path
+asset = client.assets.from_file("photo.png")
+wf.set_input("10", "image", asset)
+
+# Run workflow
+# Get outputs using the output node Id as a reference
+job = client.run(wf)
+for output in job.get_outputs("9"):
+    output.to_file(output.name)
+```
 
 ## Authentication — one client, per-surface key
 
@@ -77,9 +80,9 @@ needs the optional `pil` extra: `pip install -e ".[pil]"`.
 | Serverless deployment | `https://<deployment>.comfy.org` | Required |
 
 ```python
-client = Comfy(api_key="comfyui-...")                             # Comfy Cloud (default)
-client = Comfy("http://127.0.0.1:8189")                           # self-hosted
-client = Comfy("https://<deployment>.comfy.org", api_key="comfyui-...")  # serverless
+client = Comfy(api_key="comfyui-...")                                    # Comfy Cloud (default)
+client = Comfy("http://127.0.0.1:8189")                                  # Self-hosted
+client = Comfy("https://<deployment>.comfy.org", api_key="comfyui-...")  # Serverless
 ```
 
 `AsyncComfy` takes the same two arguments. A key is only ever attached to
@@ -270,10 +273,6 @@ Clients for the same Comfy API v2 contract:
 | [comfy-python-sdk](https://github.com/Comfy-Org/comfy-python-sdk) | Python | `comfy-sdk` |
 | [comfy-typescript-sdk](https://github.com/Comfy-Org/comfy-typescript-sdk) | TypeScript | `@comfyorg/sdk` |
 
-[comfy-api-proxy](https://github.com/Comfy-Org/comfy-api-proxy) fronts a
-self-hosted ComfyUI with this same v2 contract (it is the `comfy-api-proxy`
-entry in the `servers` list of `spec/openapi.yaml`).
-
 ## Development
 
 ```bash
@@ -291,3 +290,9 @@ pip install -e ".[codegen]"
 python scripts/gen_models.sh     # regenerate comfy_low models from spec/openapi.yaml
 python scripts/check_drift.py    # same check CI runs; fails if committed models drifted
 ```
+
+## Releases
+
+Releases are published to PyPI from a GitHub Release (tag `vX.Y.Z`) by
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml), using
+PyPI's Trusted Publishing (OIDC) — no API token is stored in this repo.
