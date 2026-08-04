@@ -4,7 +4,7 @@ terminal state, download the output.
 
 Skipped unless pointed at a live deployment:
 
-    export COMFY_BASE_URL="https://stagingplatformapi.comfy.org/deployment/<dep_id>"
+    export COMFY_BASE_URL="https://<dep_id>.stg.run.comfy.app"
     export COMFY_API_KEY="comfyui-..."
     pytest tests/integration/test_gateway_e2e.py -v
 
