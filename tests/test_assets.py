@@ -6,6 +6,7 @@ import io
 
 import pytest
 
+from comfy_low.errors import NotFound
 from comfy_sdk import Comfy, HashMismatch
 
 
@@ -107,6 +108,8 @@ def test_hash_mismatch_surfaced_without_blind_retry(server, tmp_path) -> None:
 def test_delete_asset_by_id(server) -> None:
     with Comfy(server.base_url) as client:
         client.assets.delete("asset_uuid_01")
+        with pytest.raises(NotFound):
+            client.assets.get("asset_uuid_01")
 
     assert server.state.delete_count == 1
 
@@ -118,6 +121,8 @@ def test_delete_asset_on_asset_instance(server) -> None:
         asset.commit()
         asset_id = asset.id
         asset.delete()
+        with pytest.raises(NotFound):
+            client.assets.get(asset_id)
 
     assert asset_id == "asset_uploaded_01"
     assert server.state.delete_count == 1
